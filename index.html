@@ -526,13 +526,42 @@ function addRemoteTrack(track){
   const remote=$('#remoteVideo');
   if(!remote.srcObject) remote.srcObject=new MediaStream();
   const stream=remote.srcObject;
-  if(![...stream.getTracks()].find(t=>t.id===track.id)){
-    stream.addTrack(track);
-    console.log('[remote]+', track.kind, track.id.slice(0,8), 'enabled=',track.enabled);
+
+  if(track.kind==='video'){
+    if(![...stream.getTracks()].find(t=>t.id===track.id)){
+      stream.addTrack(track);
+      console.log('[remote]+ video', track.id.slice(0,8));
+    }
+    remote.play().catch(()=>{});
+    return;
   }
-  remote.muted=!!S.deaf;
-  remote.volume=1;
-  remote.play().catch(()=>{});
+
+  // AUDIO: الفيديو بيشغّل تراك صوت واحد بس — نشغّل كل تراكات الصوت عبر AudioContext
+  if(track.kind==='audio'){
+    track.enabled=true;
+    // برضو حطه في الـ stream عشان الـ video element (أول تراك)
+    if(![...stream.getTracks()].find(t=>t.id===track.id)){
+      stream.addTrack(track);
+    }
+    // وشغّله كمان من AudioContext عشان لو في أكتر من تراك صوت
+    try{
+      if(!S.remoteAudioCtx){
+        S.remoteAudioCtx=new (window.AudioContext||window.webkitAudioContext)();
+      }
+      if(S.remoteAudioCtx.state==='suspended') S.remoteAudioCtx.resume();
+      if(!S._remoteAudioNodes) S._remoteAudioNodes={};
+      if(S._remoteAudioNodes[track.id]) return;
+      const src=S.remoteAudioCtx.createMediaStreamSource(new MediaStream([track]));
+      const g=S.remoteAudioCtx.createGain();
+      g.gain.value=S.deaf?0:1;
+      src.connect(g); g.connect(S.remoteAudioCtx.destination);
+      S._remoteAudioNodes[track.id]={src,g};
+      console.log('[remote]+ audio via AudioContext', track.id.slice(0,8));
+    }catch(e){ console.warn('remote audio ctx', e); }
+    remote.muted=!!S.deaf;
+    remote.volume=1;
+    remote.play().catch(()=>{});
+  }
 }
 
 async function preparePeer(){
@@ -644,6 +673,8 @@ function cleanupCall(notify){
   if(S.audioCtx){ try{S.audioCtx.close()}catch(e){} S.audioCtx=null; }
   if(S.localStream){ S.localStream.getTracks().forEach(t=>{try{t.stop()}catch(e){}}); S.localStream=null; }
   if(S.pc){ try{S.pc.close()}catch(e){} S.pc=null; }
+  if(S._remoteAudioNodes){ S._remoteAudioNodes={}; }
+  if(S.remoteAudioCtx){ try{S.remoteAudioCtx.close()}catch(e){} S.remoteAudioCtx=null; }
   $('#localVideo').srcObject=null; $('#remoteVideo').srcObject=null;
   hideCallUI();
   S.callWith=null; S.incomingFrom=null; S.muted=false; S.deaf=false; S.camOn=true; S.sharing=false; S.makingOffer=false;
@@ -687,6 +718,9 @@ function toggleDeaf(){
   const remote=$('#remoteVideo');
   if(remote){ remote.muted=S.deaf; remote.volume=S.deaf?0:1; }
   if(S.pc) S.pc.getReceivers().forEach(r=>{ if(r.track&&r.track.kind==='audio') r.track.enabled=!S.deaf; });
+  if(S._remoteAudioNodes){
+    Object.values(S._remoteAudioNodes).forEach(n=>{ if(n.g) n.g.gain.value=S.deaf?0:1; });
+  }
   updateDeafBtn();
   toast(S.deaf?'🔇':'🔊', S.deaf?'الديفن شغال':'الديفن اتقفل');
 }
@@ -730,51 +764,57 @@ async function toggleShare(){
   if(S.sharing&&S.screenStream){ await stopShare(); return; }
 
   try{
-    // اطلب الشاشة + صوت النظام
     S.screenStream=await navigator.mediaDevices.getDisplayMedia({
-      video:{cursor:'always', displaySurface:'monitor'},
-      audio:{
-        echoCancellation:false,
-        noiseSuppression:false,
-        autoGainControl:false,
-        suppressLocalAudioPlayback:false
-      }
+      video:{cursor:'always'},
+      audio:true
     });
 
     const screenVideo=S.screenStream.getVideoTracks()[0];
     if(!screenVideo) throw new Error('no video');
 
-    // 1) استبدل الفيديو
+    // 1) فيديو الشاشة
     const videoSender=S.pc.getSenders().find(s=>s.track&&s.track.kind==='video');
     if(videoSender) await videoSender.replaceTrack(screenVideo);
     else S.pc.addTrack(screenVideo, S.screenStream);
 
-    // 2) صوت النظام — أهم جزء
+    // 2) صوت النظام — نبعت التراك مباشرة (من غير دمج)
     const systemAudio=S.screenStream.getAudioTracks()[0]||null;
-    const micAudio=S.localStream?.getAudioTracks()[0]||null;
-    const audioSender=S.pc.getSenders().find(s=>s.track&&s.track.kind==='audio');
+    S._screenAudioSender=null;
 
     if(systemAudio){
       systemAudio.enabled=true;
-      // ادمج المايك + صوت النظام
-      const mixed=await createMixedAudio(micAudio, systemAudio);
-      S.mixedAudioTrack=mixed;
 
-      if(audioSender && mixed){
-        await audioSender.replaceTrack(mixed);
-        console.log('[share] audio replaced with MIXED mic+system');
-      }else if(mixed){
-        S.pc.addTrack(mixed, new MediaStream([mixed]));
-        console.log('[share] audio track ADDED');
+      // فعّل التراك محلياً عشان بعض المتصفحات ماتبعتهوش صامت
+      try{
+        const silent=document.createElement('audio');
+        silent.muted=true;
+        silent.autoplay=true;
+        silent.srcObject=new MediaStream([systemAudio.clone ? systemAudio.clone() : systemAudio]);
+        silent.play().catch(()=>{});
+        S._silentAudioEl=silent;
+      }catch(e){}
+
+      // ابعت صوت النظام كتراك إضافي — المايك يفضل على التراك الأصلي
+      try{
+        S._screenAudioSender=S.pc.addTrack(systemAudio, S.screenStream);
+        console.log('[share] system audio addTrack OK', systemAudio.id, systemAudio.enabled, systemAudio.readyState);
+      }catch(e1){
+        console.warn('addTrack system audio failed, try replaceTrack', e1);
+        const audioSender=S.pc.getSenders().find(s=>s.track&&s.track.kind==='audio');
+        if(audioSender){
+          // احتياطي: استبدل المايك مؤقتاً بصوت النظام
+          S._prevMicTrack=audioSender.track;
+          await audioSender.replaceTrack(systemAudio);
+          console.log('[share] system audio replaceTrack OK');
+        }
       }
       toast('🔊','صوت الاستريم شغال ✓');
     }else{
-      // مفيش تراك صوت من كروم
-      toast('⚠️','مفيش صوت! من نافذة كروم لازم تفعل Share tab audio أو Share system audio');
-      console.warn('[share] NO system audio track from getDisplayMedia');
+      toast('⚠️','كروم مدّاش تراك صوت. جرّب: Chrome Tab + Share tab audio');
+      console.warn('[share] no audio track. tracks=', S.screenStream.getTracks().map(t=>t.kind+':'+t.label));
     }
 
-    // 3) إعادة تفاوض عشان الطرف التاني يستقبل التغييرات
+    // 3) إعادة تفاوض إلزامي
     await renegotiate();
 
     $('#localVideo').srcObject=S.screenStream;
@@ -792,6 +832,17 @@ async function toggleShare(){
 
 async function stopShare(){
   if(!S.screenStream) return;
+
+  // شيل تراك صوت الشاشة من الـ PC
+  if(S._screenAudioSender && S.pc){
+    try{ S.pc.removeTrack(S._screenAudioSender); }catch(e){}
+    S._screenAudioSender=null;
+  }
+  if(S._silentAudioEl){
+    try{ S._silentAudioEl.pause(); S._silentAudioEl.srcObject=null; }catch(e){}
+    S._silentAudioEl=null;
+  }
+
   S.screenStream.getTracks().forEach(t=>{try{t.stop()}catch(e){}});
   S.screenStream=null; S.sharing=false;
 
@@ -799,7 +850,9 @@ async function stopShare(){
   const videoSender=S.pc?.getSenders().find(s=>s.track&&s.track.kind==='video');
   if(videoSender&&camTrack) try{ await videoSender.replaceTrack(camTrack); }catch(e){}
 
-  const micTrack=S.localStream?.getAudioTracks()[0];
+  // رجّع المايك لو كنا استبدلناه
+  const micTrack=S._prevMicTrack || S.localStream?.getAudioTracks()[0];
+  S._prevMicTrack=null;
   const audioSender=S.pc?.getSenders().find(s=>s.track&&s.track.kind==='audio');
   if(audioSender&&micTrack) try{ await audioSender.replaceTrack(micTrack); }catch(e){}
 
@@ -811,7 +864,6 @@ async function stopShare(){
   if(S.videoMode==='streamwatch'||S.videoMode==='expanded') setVideoMode('normal');
   if(S.socket&&S.callWith) S.socket.emit('call:screenshare',{to:S.callWith,on:false});
 
-  // إعادة تفاوض بعد وقف الشير
   await renegotiate();
   toast('🛑','الشير توقف');
 }
