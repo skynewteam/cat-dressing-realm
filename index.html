@@ -171,6 +171,7 @@ html,body{height:100%;overflow:hidden;font-family:var(--f);background:var(--bg);
     <button class="cb-btn on-state" id="cmute">🎤 مايك: On</button>
     <button class="cb-btn on-state" id="cdeaf">🔊 ديفن: Off</button>
     <button class="cb-btn" id="cfixaudio">🔊 تشغيل الصوت</button>
+    <button class="cb-btn on-state" id="cnoise">🧹 تصفية الضوضاء: On</button>
     <button class="cb-btn" id="cstream">🖥️ شير سكرين</button>
     <button class="cb-btn on-state" id="ccam">📷 كاميرا: On</button>
     <button class="cb-btn" id="cwatch">▶ مشاهدة الاستريم</button>
@@ -260,7 +261,7 @@ const S = {
   nick:'', av:'🐱', friends:[], active:null, chats:{},
   socket:null, pc:null, callWith:null, incomingFrom:null,
   localStream:null, screenStream:null, audioCtx:null, mixedAudioTrack:null,
-  muted:false, deaf:false, camOn:true, sharing:false,
+  muted:false, deaf:false, camOn:true, sharing:false, noiseOn:true,
   videoMode:'normal', joined:false, heartbeat:null, makingOffer:false, permsOk:false
 };
 const AVS = ['🐱','😺','😸','😻','😼','🙀','😿','😾','🐈','🦁'];
@@ -636,13 +637,26 @@ async function preparePeer(){
 
   try{
     S.localStream=await navigator.mediaDevices.getUserMedia({
-      audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true},
+      audio:{
+        echoCancellation:true,
+        noiseSuppression:true,
+        autoGainControl:true,
+        channelCount:1,
+        sampleRate:{ideal:48000}
+      },
       video:{width:{ideal:640},height:{ideal:480},facingMode:'user'}
     });
   }catch(e){
     try{
       S.localStream=await navigator.mediaDevices.getUserMedia({
-        audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true},video:false
+        audio:{
+          echoCancellation:true,
+          noiseSuppression:true,
+          autoGainControl:true,
+          channelCount:1,
+          sampleRate:{ideal:48000}
+        },
+        video:false
       });
       S.camOn=false;
     }catch(err){
@@ -722,7 +736,7 @@ function cleanupCall(notify){
   $('#incoming').classList.remove('on');
 }
 
-function updateAllBtns(){ updateMuteBtn(); updateDeafBtn(); updateCamBtn(); updateStreamBtn(); }
+function updateAllBtns(){ updateMuteBtn(); updateDeafBtn(); updateCamBtn(); updateStreamBtn(); updateNoiseBtn(); }
 function updateMuteBtn(){
   const btn=$('#cmute');
   if(S.muted){ btn.textContent='🎤 مايك: Off'; btn.classList.add('off'); btn.classList.remove('on-state'); }
@@ -742,6 +756,39 @@ function updateStreamBtn(){
   const btn=$('#cstream');
   if(S.sharing){ btn.textContent='🛑 وقف الشير'; btn.classList.add('stream-on'); }
   else{ btn.textContent='🖥️ شير سكرين'; btn.classList.remove('stream-on'); }
+}
+
+function updateNoiseBtn(){
+  const btn=$('#cnoise');
+  if(!btn) return;
+  if(S.noiseOn){ btn.textContent='🧹 تصفية الضوضاء: On'; btn.classList.add('on-state'); btn.classList.remove('off'); }
+  else{ btn.textContent='🧹 تصفية الضوضاء: Off'; btn.classList.remove('on-state'); btn.classList.add('off'); }
+}
+
+async function toggleNoise(){
+  S.noiseOn = !S.noiseOn;
+  const tracks = [];
+  if(S.localStream) tracks.push(...S.localStream.getAudioTracks());
+  // apply on peer senders too
+  if(S.pc){
+    S.pc.getSenders().forEach(s=>{
+      if(s.track && s.track.kind==='audio' && s.track !== S.mixedAudioTrack) tracks.push(s.track);
+    });
+  }
+  const constraints = {
+    echoCancellation: true,
+    noiseSuppression: S.noiseOn,
+    autoGainControl: true,
+    channelCount: 1
+  };
+  for(const t of tracks){
+    try{
+      await t.applyConstraints(constraints);
+      console.log('[noise] applied', S.noiseOn, t.id.slice(0,8));
+    }catch(e){ console.warn('applyConstraints', e); }
+  }
+  updateNoiseBtn();
+  toast(S.noiseOn?'🧹':'🎙️', S.noiseOn?'تصفية الضوضاء اشتغلت':'تصفية الضوضاء اتقفلت');
 }
 
 function toggleMute(){
@@ -947,6 +994,7 @@ $('#incReject').onclick=rejectIncoming;
 $('#cmute').onclick=toggleMute;
 $('#cdeaf').onclick=toggleDeaf;
 $('#cfixaudio').onclick=()=>{ forceRemoteAudioPlay(); toast('🔊','تم تشغيل الصوت'); };
+$('#cnoise').onclick=toggleNoise;
 $('#ccam').onclick=toggleCam;
 $('#cstream').onclick=toggleShare;
 $('#cwatch').onclick=toggleWatch;
