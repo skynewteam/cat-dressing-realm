@@ -103,7 +103,7 @@ html,body{height:100%;overflow:hidden;font-family:var(--f);background:var(--bg);
 .mbd p{font-size:.8rem;color:var(--dim);margin-bottom:10px;line-height:1.4}
 .ma{display:flex;gap:7px}.ma .btn,.ma .btn2{flex:1}
 #toasts{position:fixed;top:52px;left:10px;z-index:90;display:flex;flex-direction:column;gap:5px}
-.toast{background:var(--glass);border:1px solid var(--border);border-radius:9px;padding:9px 12px;min-width:200px;max-width:280px;display:flex;align-items:center;gap:7px;font-size:.8rem;animation:ti .2s ease-out}
+.toast{background:var(--glass);border:1px solid var(--border);border-radius:9px;padding:9px 12px;min-width:200px;max-width:300px;display:flex;align-items:center;gap:7px;font-size:.8rem;animation:ti .2s ease-out}
 @keyframes ti{from{opacity:0;transform:translateX(-16px)}}
 #videofloat{position:fixed;bottom:14px;left:14px;z-index:35;display:none;flex-direction:column;gap:6px;width:380px;max-width:calc(100vw - 28px);background:var(--glass);border:1px solid var(--border);border-radius:14px;padding:10px;backdrop-filter:blur(14px);box-shadow:0 10px 40px rgba(0,0,0,.5)}
 #videofloat.on{display:flex}
@@ -124,7 +124,6 @@ html,body{height:100%;overflow:hidden;font-family:var(--f);background:var(--bg);
 .vheader strong{font-size:.82rem;color:var(--gold);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .vheader .vbtns{display:flex;gap:4px;flex-shrink:0}
 .vheader button{background:rgba(5,14,28,.55);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:4px 8px;font-size:.68rem;cursor:pointer}
-.vheader button:hover{background:rgba(43,143,212,.3)}
 .vwrap{display:grid;grid-template-columns:1fr 1fr;gap:6px;position:relative}
 .vwrap video{width:100%;height:150px;object-fit:cover;background:#000;border-radius:8px;border:1px solid var(--border)}
 .vstatus{font-size:.65rem;color:var(--dim);text-align:center;margin-top:2px}
@@ -181,10 +180,7 @@ html,body{height:100%;overflow:hidden;font-family:var(--f);background:var(--bg);
   <header class="top">
     <div class="tl"><div class="mav" id="mav">🐱</div><div><div class="mn" id="mn">—</div><div class="ms" id="mst">Online</div></div></div>
     <div class="tc"><div class="rn">Cat Dressing Realm</div></div>
-    <div class="tr">
-      <button class="ib" id="bside">🐾</button>
-      <button class="ib" id="bleave">🚪</button>
-    </div>
+    <div class="tr"><button class="ib" id="bside">🐾</button><button class="ib" id="bleave">🚪</button></div>
   </header>
   <div class="body">
     <aside class="side" id="side">
@@ -264,7 +260,7 @@ const S = {
   socket:null, pc:null, callWith:null, incomingFrom:null,
   localStream:null, screenStream:null, audioCtx:null, mixedAudioTrack:null,
   muted:false, deaf:false, camOn:true, sharing:false,
-  videoMode:'normal', joined:false, heartbeat:null, makingOffer:false
+  videoMode:'normal', joined:false, heartbeat:null, makingOffer:false, permsOk:false
 };
 const AVS = ['🐱','😺','😸','😻','😼','🙀','😿','😾','🐈','🦁'];
 const $ = s => document.querySelector(s);
@@ -295,81 +291,116 @@ function ready(){ $('#benter').disabled=$('#nick').value.trim().length<2; }
 function toast(ic,tx){
   const e=document.createElement('div'); e.className='toast';
   e.innerHTML=`<span style="font-size:16px">${ic}</span><span>${tx}</span>`;
-  $('#toasts').appendChild(e); setTimeout(()=>e.remove(),4000);
+  $('#toasts').appendChild(e); setTimeout(()=>e.remove(),4500);
+}
+
+/* ===== FORCE MIC + CAMERA PERMISSIONS ON ENTER ===== */
+async function requestAllPermissions(){
+  try{
+    // افتح AudioContext بدري عشان الصوت يشتغل بعدين
+    try{
+      const ac=new (window.AudioContext||window.webkitAudioContext)();
+      if(ac.state==='suspended') await ac.resume();
+      await ac.close();
+    }catch(e){}
+
+    let stream=null;
+    try{
+      stream=await navigator.mediaDevices.getUserMedia({
+        audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true},
+        video:{width:{ideal:640},height:{ideal:480},facingMode:'user'}
+      });
+    }catch(e){
+      stream=await navigator.mediaDevices.getUserMedia({
+        audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true},
+        video:false
+      });
+    }
+    // وقف التراكات — احنا بس عايزين الإذن
+    stream.getTracks().forEach(t=>t.stop());
+    S.permsOk=true;
+    toast('🎤','المايك والكاميرا جاهزين');
+    return true;
+  }catch(err){
+    console.warn('permissions denied', err);
+    toast('⚠️','لازم توافق على المايك عشان المكالمات تشتغل');
+    S.permsOk=false;
+    return false;
+  }
 }
 
 function connectRealtime(){
   if(S.socket){ try{ S.socket.removeAllListeners(); S.socket.disconnect(); }catch(e){} }
-  S.socket = io(SERVER_URL, {
+  S.socket=io(SERVER_URL,{
     transports:['websocket','polling'], reconnection:true, reconnectionAttempts:Infinity,
     reconnectionDelay:800, reconnectionDelayMax:5000, timeout:15000, forceNew:true
   });
-  S.socket.on('connect', ()=>{
+  S.socket.on('connect',()=>{
     S.socket.emit('user:join',{name:S.nick,av:S.av});
     startHeartbeat();
     if(S.joined) toast('🔄','رجع الاتصال');
   });
-  S.socket.on('disconnect', ()=>{ stopHeartbeat(); if(S.joined) toast('⚠️','انقطع... بيرجع'); });
-  S.socket.on('connect_error', ()=>{});
-  S.socket.on('user:error', m=>{ $('#nerr').textContent=m; $('#nerr').classList.add('on'); });
-  S.socket.on('user:joined', ()=>{
+  S.socket.on('disconnect',()=>{ stopHeartbeat(); if(S.joined) toast('⚠️','انقطع... بيرجع'); });
+  S.socket.on('user:error',m=>{ $('#nerr').textContent=m; $('#nerr').classList.add('on'); });
+  S.socket.on('user:joined',()=>{
     S.joined=true; $('#mn').textContent=S.nick; $('#mav').textContent=S.av;
     $('#entry').style.display='none'; $('#app').classList.add('on');
     toast('✨','أهلاً يا '+S.nick);
   });
-  S.socket.on('users:list', list=>{
+  S.socket.on('users:list',list=>{
     S.friends=list.filter(f=>f.n.toLowerCase()!==S.nick.toLowerCase())
       .map(f=>{ const o=S.friends.find(x=>x.n.toLowerCase()===f.n.toLowerCase()); return {...f,added:o?.added||false}; });
     renderFriends();
   });
-  S.socket.on('invite:sent', x=>toast('📨','الدعوة اتبعتت لـ '+x.to));
-  S.socket.on('invite:error', m=>toast('⚠️',m));
-  S.socket.on('invite:received', x=>{
+  S.socket.on('invite:sent',x=>toast('📨','الدعوة اتبعتت لـ '+x.to));
+  S.socket.on('invite:error',m=>toast('⚠️',m));
+  S.socket.on('invite:received',x=>{
     if(confirm(x.from.n+' دعاك. تقبل؟')){ S.socket.emit('invite:accept',{from:x.from.n}); addFriend(x.from); }
   });
-  S.socket.on('friend:added', u=>{ addFriend(u); toast('🐾',u.n+' بقى صاحبك'); });
-  S.socket.on('chat:message', x=>{
+  S.socket.on('friend:added',u=>{ addFriend(u); toast('🐾',u.n+' بقى صاحبك'); });
+  S.socket.on('chat:message',x=>{
     if(!S.chats[x.from]) S.chats[x.from]=[]; S.chats[x.from].push(x.message);
     if(S.active===x.from) renderMsgs(); else toast('💬','رسالة من '+x.from);
   });
-  S.socket.on('chat:sent', x=>{
+  S.socket.on('chat:sent',x=>{
     if(!S.chats[x.to]) S.chats[x.to]=[]; S.chats[x.to].push(x.message);
     if(S.active===x.to) renderMsgs();
   });
-  S.socket.on('chat:file', x=>{
+  S.socket.on('chat:file',x=>{
     if(!S.chats[x.from]) S.chats[x.from]=[];
     S.chats[x.from].push({author:x.file.author,av:x.file.av,fileName:x.file.fileName,mime:x.file.mime,data:x.file.data,time:x.file.time});
     if(S.active===x.from) renderMsgs(); else toast('📎','ملف من '+x.from);
   });
-  S.socket.on('chat:fileSent', x=>{
+  S.socket.on('chat:fileSent',x=>{
     if(!S.chats[x.to]) S.chats[x.to]=[];
     S.chats[x.to].push({author:x.file.author,av:x.file.av,fileName:x.file.fileName,mime:x.file.mime,data:x.file.data,time:x.file.time,own:true});
     if(S.active===x.to) renderMsgs();
   });
-  S.socket.on('file:error', m=>toast('⚠️',m));
-  S.socket.on('call:incoming', x=>incomingCall(x.from));
-  S.socket.on('call:accept', async x=>{ if(x.from===S.callWith) await makeOffer(); });
-  S.socket.on('call:reject', x=>{ toast('📵',x.from+' رفض'); cleanupCall(false); });
-  S.socket.on('call:offer', async x=>await handleOffer(x));
-  S.socket.on('call:answer', async x=>{
-    if(S.pc&&x.sdp){ try{
-      if(S.pc.signalingState!=='stable') await S.pc.setRemoteDescription(x.sdp);
-      else if(!S.pc.currentRemoteDescription) await S.pc.setRemoteDescription(x.sdp);
-    }catch(e){} }
+  S.socket.on('file:error',m=>toast('⚠️',m));
+  S.socket.on('call:incoming',x=>incomingCall(x.from));
+  S.socket.on('call:accept',async x=>{ if(x.from===S.callWith) await makeOffer(); });
+  S.socket.on('call:reject',x=>{ toast('📵',x.from+' رفض'); cleanupCall(false); });
+  S.socket.on('call:offer',async x=>await handleOffer(x));
+  S.socket.on('call:answer',async x=>{
+    if(S.pc&&x.sdp){
+      try{
+        const st=S.pc.signalingState;
+        if(st==='have-local-offer' || !S.pc.currentRemoteDescription){
+          await S.pc.setRemoteDescription(x.sdp);
+        }
+      }catch(e){ console.warn('answer err',e); }
+    }
   });
-  S.socket.on('call:ice', async x=>{ if(S.pc&&x.candidate) try{ await S.pc.addIceCandidate(x.candidate); }catch(e){} });
-  S.socket.on('call:hangup', x=>{ toast('📞',x.from+' قفل'); cleanupCall(false); });
-  S.socket.on('call:screenshare', x=>{
+  S.socket.on('call:ice',async x=>{ if(S.pc&&x.candidate) try{ await S.pc.addIceCandidate(x.candidate); }catch(e){} });
+  S.socket.on('call:hangup',x=>{ toast('📞',x.from+' قفل'); cleanupCall(false); });
+  S.socket.on('call:screenshare',x=>{
     if(x.from===S.callWith){
       if(x.on){ showWatchBtn(true); toast('🖥️',x.from+' بيشارك الشاشة'); }
       else{ showWatchBtn(false); if(S.videoMode==='streamwatch') setVideoMode('normal'); }
     }
   });
 }
-function startHeartbeat(){
-  stopHeartbeat();
-  S.heartbeat=setInterval(()=>{ if(S.socket&&S.socket.connected) S.socket.emit('ping',{t:Date.now()}); },15000);
-}
+function startHeartbeat(){ stopHeartbeat(); S.heartbeat=setInterval(()=>{ if(S.socket&&S.socket.connected) S.socket.emit('ping',{t:Date.now()}); },15000); }
 function stopHeartbeat(){ if(S.heartbeat){ clearInterval(S.heartbeat); S.heartbeat=null; } }
 function addFriend(u){
   if(!u) return;
@@ -377,7 +408,16 @@ function addFriend(u){
   if(f) f.added=true; else S.friends.push({...u,added:true});
   renderFriends();
 }
-function enter(){ const n=$('#nick').value.trim().slice(0,16); if(n.length<2) return; S.nick=n; connectRealtime(); }
+
+async function enter(){
+  const n=$('#nick').value.trim().slice(0,16);
+  if(n.length<2) return;
+  S.nick=n;
+  // إجباري: اطلب المايك/الكاميرا قبل الدخول
+  await requestAllPermissions();
+  connectRealtime();
+}
+
 function renderFriends(){
   const q=($('#fsearch').value||'').toLowerCase();
   const list=S.friends.filter(f=>!q||f.n.toLowerCase().includes(q));
@@ -452,7 +492,7 @@ function setVideoMode(mode){
 function enterStreamWatch(){
   setVideoMode('streamwatch'); $('#watchStreamBtn').classList.remove('on');
   const remote=$('#remoteVideo');
-  if(remote){ remote.muted=!!S.deaf; remote.play().catch(()=>{}); }
+  if(remote){ remote.muted=!!S.deaf; remote.volume=1; remote.play().catch(()=>{}); }
   toast('🖥️','وضع الاستريم — Esc للخروج');
 }
 function exitStreamWatch(){ setVideoMode('normal'); }
@@ -470,7 +510,6 @@ function incomingCall(from){
   if(S.pc||S.callWith){ if(S.socket) S.socket.emit('call:reject',{to:name}); return; }
   S.incomingFrom=name; $('#incAv').textContent=av; $('#incName').textContent=name+' بيكلمك';
   $('#incoming').classList.add('on');
-  try{ const ctx=new (window.AudioContext||window.webkitAudioContext)(); const o=ctx.createOscillator(); const g=ctx.createGain(); o.connect(g); g.connect(ctx.destination); o.frequency.value=880; g.gain.value=0.08; o.start(); setTimeout(()=>{o.stop();ctx.close();},300); }catch(e){}
 }
 async function acceptIncoming(){
   const from=S.incomingFrom; if(!from){ $('#incoming').classList.remove('on'); return; }
@@ -483,23 +522,17 @@ function rejectIncoming(){
   S.incomingFrom=null; $('#incoming').classList.remove('on');
 }
 
-/* ===== CRITICAL: accumulate ALL remote tracks into ONE stream ===== */
-function ensureRemoteStream(){
+function addRemoteTrack(track){
   const remote=$('#remoteVideo');
   if(!remote.srcObject) remote.srcObject=new MediaStream();
-  return remote.srcObject;
-}
-function addRemoteTrack(track){
-  const stream=ensureRemoteStream();
+  const stream=remote.srcObject;
   if(![...stream.getTracks()].find(t=>t.id===track.id)){
     stream.addTrack(track);
-    console.log('[remote] added track', track.kind, track.label||track.id);
+    console.log('[remote]+', track.kind, track.id.slice(0,8), 'enabled=',track.enabled);
   }
-  const remote=$('#remoteVideo');
   remote.muted=!!S.deaf;
-  // force play (needed for audio after autoplay policies)
-  const p=remote.play();
-  if(p&&p.catch) p.catch(()=>{});
+  remote.volume=1;
+  remote.play().catch(()=>{});
 }
 
 async function preparePeer(){
@@ -512,19 +545,15 @@ async function preparePeer(){
     ]
   });
   S.pc.onicecandidate=e=>{
-    if(e.candidate&&S.socket&&S.callWith) S.socket.emit('call:ice',{to:S.callWith,candidate:e.candidate});
+    if(e.candidate&&S.socket&&S.callWith)
+      S.socket.emit('call:ice',{to:S.callWith,candidate:e.candidate});
   };
   S.pc.ontrack=e=>{
-    console.log('[webrtc] ontrack', e.track.kind, e.track.readyState, e.streams?.length);
-    // ALWAYS accumulate — never replace whole srcObject
+    console.log('[ontrack]', e.track.kind, e.track.readyState);
     addRemoteTrack(e.track);
-    if(e.streams){
-      e.streams.forEach(st=>{
-        st.getTracks().forEach(t=> addRemoteTrack(t));
-      });
-    }
+    if(e.streams) e.streams.forEach(st=> st.getTracks().forEach(t=>addRemoteTrack(t)));
     $('#vstatus').textContent='متصل ✓';
-    if(e.track.kind==='video' && !S.sharing) showWatchBtn(true);
+    if(e.track.kind==='video'&&!S.sharing) showWatchBtn(true);
   };
   S.pc.onconnectionstatechange=()=>{
     if(!S.pc) return;
@@ -543,7 +572,7 @@ async function preparePeer(){
   }catch(e){
     try{
       S.localStream=await navigator.mediaDevices.getUserMedia({
-        audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}, video:false
+        audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true},video:false
       });
       S.camOn=false;
     }catch(err){
@@ -551,20 +580,27 @@ async function preparePeer(){
     }
   }
 
-  S.localStream.getTracks().forEach(t=>{
-    t.enabled=true;
-    S.pc.addTrack(t, S.localStream);
-  });
+  S.localStream.getTracks().forEach(t=>{ t.enabled=true; S.pc.addTrack(t, S.localStream); });
   S.muted=false; S.deaf=false;
   S.localStream.getAudioTracks().forEach(t=>t.enabled=true);
 
   $('#localVideo').srcObject=S.localStream;
   $('#localVideo').muted=true;
   $('#remoteVideo').muted=false;
-  // reset remote stream container
+  $('#remoteVideo').volume=1;
   $('#remoteVideo').srcObject=new MediaStream();
   updateAllBtns();
   return S.pc;
+}
+
+async function renegotiate(){
+  if(!S.pc||!S.callWith||!S.socket) return;
+  try{
+    const offer=await S.pc.createOffer();
+    await S.pc.setLocalDescription(offer);
+    S.socket.emit('call:offer',{to:S.callWith,sdp:S.pc.localDescription});
+    console.log('[renegotiate] offer sent');
+  }catch(e){ console.warn('renegotiate failed', e); }
 }
 
 async function makeOffer(){
@@ -577,25 +613,37 @@ async function makeOffer(){
   }catch(e){ console.error(e); toast('⚠️','فشل إنشاء المكالمة'); }
   finally{ S.makingOffer=false; }
 }
+
 async function handleOffer(x){
   try{
-    S.callWith=x.from; await preparePeer(); if(!S.pc) return;
-    if(S.pc.signalingState==='have-local-offer') await S.pc.setLocalDescription({type:'rollback'});
+    const isRenegotiation=!!S.pc && S.callWith===x.from;
+    if(!S.pc){
+      S.callWith=x.from;
+      await preparePeer();
+    }else if(!S.callWith){
+      S.callWith=x.from;
+    }
+    if(!S.pc) return;
+
+    // دعم إعادة التفاوض أثناء المكالمة (لما الشير يتغير)
+    if(S.pc.signalingState==='have-local-offer'){
+      try{ await S.pc.setLocalDescription({type:'rollback'}); }catch(e){}
+    }
     await S.pc.setRemoteDescription(x.sdp);
     const answer=await S.pc.createAnswer();
     await S.pc.setLocalDescription(answer);
-    if(S.socket) S.socket.emit('call:answer',{to:S.callWith,sdp:S.pc.localDescription});
-    showCallUI();
-  }catch(e){ console.error(e); toast('⚠️','فشل استقبال المكالمة'); cleanupCall(false); }
+    if(S.socket) S.socket.emit('call:answer',{to:S.callWith||x.from,sdp:S.pc.localDescription});
+    if(!isRenegotiation) showCallUI();
+  }catch(e){ console.error('handleOffer',e); if(!S.pc) { toast('⚠️','فشل استقبال المكالمة'); cleanupCall(false); } }
 }
 
 function cleanupCall(notify){
   if(notify&&S.callWith&&S.socket&&S.socket.connected){ try{ S.socket.emit('call:hangup',{to:S.callWith}); }catch(e){} }
   if(S.screenStream){ S.screenStream.getTracks().forEach(t=>{try{t.stop()}catch(e){}}); S.screenStream=null; }
-  if(S.mixedAudioTrack){ try{ S.mixedAudioTrack.stop(); }catch(e){} S.mixedAudioTrack=null; }
-  if(S.audioCtx){ try{ S.audioCtx.close(); }catch(e){} S.audioCtx=null; }
+  if(S.mixedAudioTrack){ try{S.mixedAudioTrack.stop()}catch(e){} S.mixedAudioTrack=null; }
+  if(S.audioCtx){ try{S.audioCtx.close()}catch(e){} S.audioCtx=null; }
   if(S.localStream){ S.localStream.getTracks().forEach(t=>{try{t.stop()}catch(e){}}); S.localStream=null; }
-  if(S.pc){ try{ S.pc.close(); }catch(e){} S.pc=null; }
+  if(S.pc){ try{S.pc.close()}catch(e){} S.pc=null; }
   $('#localVideo').srcObject=null; $('#remoteVideo').srcObject=null;
   hideCallUI();
   S.callWith=null; S.incomingFrom=null; S.muted=false; S.deaf=false; S.camOn=true; S.sharing=false; S.makingOffer=false;
@@ -625,15 +673,10 @@ function updateStreamBtn(){
 }
 
 function toggleMute(){
-  if(!S.localStream) return;
+  if(!S.localStream && !S.pc) return;
   S.muted=!S.muted;
-  // mute actual outbound audio tracks on peer connection
-  if(S.pc){
-    S.pc.getSenders().forEach(s=>{
-      if(s.track && s.track.kind==='audio') s.track.enabled=!S.muted;
-    });
-  }
-  S.localStream.getAudioTracks().forEach(t=>t.enabled=!S.muted);
+  if(S.pc) S.pc.getSenders().forEach(s=>{ if(s.track&&s.track.kind==='audio') s.track.enabled=!S.muted; });
+  if(S.localStream) S.localStream.getAudioTracks().forEach(t=>t.enabled=!S.muted);
   if(S.screenStream) S.screenStream.getAudioTracks().forEach(t=>t.enabled=!S.muted);
   if(S.mixedAudioTrack) S.mixedAudioTrack.enabled=!S.muted;
   updateMuteBtn();
@@ -642,7 +685,7 @@ function toggleMute(){
 function toggleDeaf(){
   S.deaf=!S.deaf;
   const remote=$('#remoteVideo');
-  if(remote) remote.muted=S.deaf;
+  if(remote){ remote.muted=S.deaf; remote.volume=S.deaf?0:1; }
   if(S.pc) S.pc.getReceivers().forEach(r=>{ if(r.track&&r.track.kind==='audio') r.track.enabled=!S.deaf; });
   updateDeafBtn();
   toast(S.deaf?'🔇':'🔊', S.deaf?'الديفن شغال':'الديفن اتقفل');
@@ -657,30 +700,27 @@ function toggleCam(){
   toast(S.camOn?'📷':'🚫', S.camOn?'الكاميرا اشتغلت':'الكاميرا اتقفلت');
 }
 
-/* ===== MIX mic + system audio into ONE track (reliable) ===== */
 async function createMixedAudio(micTrack, systemTrack){
   try{
     if(S.audioCtx){ try{ await S.audioCtx.close(); }catch(e){} }
     S.audioCtx=new (window.AudioContext||window.webkitAudioContext)();
     if(S.audioCtx.state==='suspended') await S.audioCtx.resume();
     const dest=S.audioCtx.createMediaStreamDestination();
-    if(micTrack){
-      const ms=new MediaStream([micTrack]);
-      const src=S.audioCtx.createMediaStreamSource(ms);
-      const g=S.audioCtx.createGain(); g.gain.value=1.0;
+    if(micTrack && micTrack.readyState==='live'){
+      const src=S.audioCtx.createMediaStreamSource(new MediaStream([micTrack]));
+      const g=S.audioCtx.createGain(); g.gain.value=1;
       src.connect(g); g.connect(dest);
     }
-    if(systemTrack){
-      const ms=new MediaStream([systemTrack]);
-      const src=S.audioCtx.createMediaStreamSource(ms);
-      const g=S.audioCtx.createGain(); g.gain.value=1.0;
+    if(systemTrack && systemTrack.readyState==='live'){
+      const src=S.audioCtx.createMediaStreamSource(new MediaStream([systemTrack]));
+      const g=S.audioCtx.createGain(); g.gain.value=1.2;
       src.connect(g); g.connect(dest);
     }
     const mixed=dest.stream.getAudioTracks()[0];
-    if(mixed) mixed.enabled=!S.muted;
-    return mixed;
+    if(mixed){ mixed.enabled=!S.muted; }
+    return mixed||systemTrack||micTrack||null;
   }catch(e){
-    console.warn('mix failed', e);
+    console.warn('mix fail', e);
     return systemTrack||micTrack||null;
   }
 }
@@ -690,45 +730,58 @@ async function toggleShare(){
   if(S.sharing&&S.screenStream){ await stopShare(); return; }
 
   try{
+    // اطلب الشاشة + صوت النظام
     S.screenStream=await navigator.mediaDevices.getDisplayMedia({
-      video:{cursor:'always'},
-      audio:true  // لازم المستخدم يختار Share system/tab audio
+      video:{cursor:'always', displaySurface:'monitor'},
+      audio:{
+        echoCancellation:false,
+        noiseSuppression:false,
+        autoGainControl:false,
+        suppressLocalAudioPlayback:false
+      }
     });
 
     const screenVideo=S.screenStream.getVideoTracks()[0];
     if(!screenVideo) throw new Error('no video');
 
-    // replace video
+    // 1) استبدل الفيديو
     const videoSender=S.pc.getSenders().find(s=>s.track&&s.track.kind==='video');
     if(videoSender) await videoSender.replaceTrack(screenVideo);
     else S.pc.addTrack(screenVideo, S.screenStream);
 
-    // ===== AUDIO: mix mic + system =====
+    // 2) صوت النظام — أهم جزء
     const systemAudio=S.screenStream.getAudioTracks()[0]||null;
     const micAudio=S.localStream?.getAudioTracks()[0]||null;
+    const audioSender=S.pc.getSenders().find(s=>s.track&&s.track.kind==='audio');
 
     if(systemAudio){
       systemAudio.enabled=true;
+      // ادمج المايك + صوت النظام
       const mixed=await createMixedAudio(micAudio, systemAudio);
-      if(mixed){
-        S.mixedAudioTrack=mixed;
-        const audioSender=S.pc.getSenders().find(s=>s.track&&s.track.kind==='audio');
-        if(audioSender){
-          await audioSender.replaceTrack(mixed);
-          console.log('[share] replaced audio with mixed mic+system');
-        }else{
-          S.pc.addTrack(mixed, new MediaStream([mixed]));
-        }
-        toast('🔊','صوت الشاشة + المايك شغالين');
+      S.mixedAudioTrack=mixed;
+
+      if(audioSender && mixed){
+        await audioSender.replaceTrack(mixed);
+        console.log('[share] audio replaced with MIXED mic+system');
+      }else if(mixed){
+        S.pc.addTrack(mixed, new MediaStream([mixed]));
+        console.log('[share] audio track ADDED');
       }
+      toast('🔊','صوت الاستريم شغال ✓');
     }else{
-      toast('⚠️','مفيش صوت نظام! من نافذة كروم اختار Share tab/system audio');
+      // مفيش تراك صوت من كروم
+      toast('⚠️','مفيش صوت! من نافذة كروم لازم تفعل Share tab audio أو Share system audio');
+      console.warn('[share] NO system audio track from getDisplayMedia');
     }
+
+    // 3) إعادة تفاوض عشان الطرف التاني يستقبل التغييرات
+    await renegotiate();
 
     $('#localVideo').srcObject=S.screenStream;
     S.sharing=true; updateStreamBtn(); setVideoMode('expanded');
     if(S.socket&&S.callWith) S.socket.emit('call:screenshare',{to:S.callWith,on:true});
     toast('🖥️','شير سكرين اشتغل');
+
     screenVideo.onended=()=>stopShare();
   }catch(e){
     console.warn(e);
@@ -742,24 +795,24 @@ async function stopShare(){
   S.screenStream.getTracks().forEach(t=>{try{t.stop()}catch(e){}});
   S.screenStream=null; S.sharing=false;
 
-  // restore camera video
   const camTrack=S.localStream?.getVideoTracks()[0];
   const videoSender=S.pc?.getSenders().find(s=>s.track&&s.track.kind==='video');
   if(videoSender&&camTrack) try{ await videoSender.replaceTrack(camTrack); }catch(e){}
 
-  // restore pure mic audio
   const micTrack=S.localStream?.getAudioTracks()[0];
   const audioSender=S.pc?.getSenders().find(s=>s.track&&s.track.kind==='audio');
-  if(audioSender&&micTrack){
-    try{ await audioSender.replaceTrack(micTrack); }catch(e){}
-  }
-  if(S.mixedAudioTrack){ try{ S.mixedAudioTrack.stop(); }catch(e){} S.mixedAudioTrack=null; }
-  if(S.audioCtx){ try{ S.audioCtx.close(); }catch(e){} S.audioCtx=null; }
+  if(audioSender&&micTrack) try{ await audioSender.replaceTrack(micTrack); }catch(e){}
+
+  if(S.mixedAudioTrack){ try{S.mixedAudioTrack.stop()}catch(e){} S.mixedAudioTrack=null; }
+  if(S.audioCtx){ try{S.audioCtx.close()}catch(e){} S.audioCtx=null; }
 
   if(S.localStream) $('#localVideo').srcObject=S.localStream;
   updateStreamBtn();
   if(S.videoMode==='streamwatch'||S.videoMode==='expanded') setVideoMode('normal');
   if(S.socket&&S.callWith) S.socket.emit('call:screenshare',{to:S.callWith,on:false});
+
+  // إعادة تفاوض بعد وقف الشير
+  await renegotiate();
   toast('🛑','الشير توقف');
 }
 
@@ -773,7 +826,7 @@ function toggleMini(){ if(S.videoMode==='mini') setVideoMode('normal'); else set
 function toggleWatch(){ if(S.videoMode==='streamwatch') exitStreamWatch(); else enterStreamWatch(); }
 
 function leave(){
-  stopHeartbeat(); if(S.socket) try{ S.socket.disconnect(); }catch(e){}
+  stopHeartbeat(); if(S.socket) try{S.socket.disconnect()}catch(e){}
   S.friends=[]; S.chats={}; S.active=null; S.joined=false; cleanupCall(false);
   $('#mleave').classList.add('h'); $('#app').classList.remove('on');
   $('#entry').style.display=''; $('#nick').value=''; ready();
@@ -813,7 +866,7 @@ $('#vclose').onclick=()=>cleanupCall(true);
 $('#watchStreamBtn').onclick=enterStreamWatch;
 $$('[data-c]').forEach(b=>b.onclick=()=>{ const id=b.dataset.c; if(id) $('#'+id).classList.add('h'); });
 $$('.mod').forEach(m=>m.onclick=e=>{ if(e.target===m) m.classList.add('h'); });
-document.addEventListener('keydown', e=>{ if(e.key==='Escape'&&S.videoMode==='streamwatch') exitStreamWatch(); });
+document.addEventListener('keydown',e=>{ if(e.key==='Escape'&&S.videoMode==='streamwatch') exitStreamWatch(); });
 })();
 </script>
 </body>
