@@ -240,8 +240,7 @@ const esc=s=>{const d=document.createElement('div');d.textContent=s;return d.inn
 setTimeout(()=>{$('#load').classList.add('gone');setupEntry();},1400);
 
 function setupEntry(){
-  const row=$('#avs');
-  AVS.forEach((a,i)=>{const e=document.createElement('div');e.className='av'+(i===0?' on':'');e.textContent=a;e.onclick=()=>{$$('.av').forEach(x=>x.classList.remove('on'));e.classList.add('on');S.av=a;ready()};row.appendChild(e)});
+  const row=$('#avs');   AVS.forEach((a,i)=>{const e=document.createElement('div');e.className='av'+(i===0?' on':'');e.textContent=a;e.onclick=()=>{$$('.av').forEach(x=>x.classList.remove('on'));e.classList.add('on');S.av=a;ready()};row.appendChild(e)});
   $('#nick').oninput=()=>{$('#nerr').classList.remove('on');ready()};
   $('#nick').onkeydown=e=>{if(e.key==='Enter'&&!$('#benter').disabled)enter()};
   $('#benter').onclick=enter;
@@ -327,8 +326,8 @@ function endCall(){
 function toggleMute(){S.muted=!S.muted;if(S.stream)S.stream.getAudioTracks().forEach(t=>t.enabled=!S.muted);$('#cmute').classList.toggle('on',S.muted);$('#cmute').textContent=S.muted?'🔊 Unmute':'🔇 Mute'}
 function toggleDeaf(){S.deaf=!S.deaf;$('#cdeaf').classList.toggle('on',S.deaf);$('#cdeaf').textContent=S.deaf?'🔈 Undeafen':'🔊 Deafen';toast(S.deaf?'🔇':'🔊',S.deaf?'Deafened':'Undeafened')}
 async function toggleStream(){
-  if(S.sharing){if(S.stream)S.stream.getTracks().forEach(t=>t.stop());S.stream=null;S.sharing=false;$('#cstream').classList.remove('on');toast('🖥️','Stream stopped');return}
-  try{const res=+$('#qres').value||720,fps=+$('#qfps').value||30;
+  if(S.sharing){if(S.stream)S.stream.getTracks().forEach(t=>t.stop());S.stream=null;S.sharing=false;$('#cstream').classList.remove('on');toast('🖥️️','Stream stopped');return}
+  try{const res=+$('#qres').value\vert{}\vert{}720,fps=+$('#qfps').value||30;
   S.stream=await navigator.mediaDevices.getDisplayMedia({video:{width:{ideal:res===480?854:1280},height:{ideal:res},frameRate:{ideal:fps,max:fps}},audio:true});
   S.sharing=true;$('#cstream').classList.add('on');toast('🖥️','Stream started');
   S.stream.getVideoTracks()[0].onended=()=>{S.sharing=false;$('#cstream').classList.remove('on')}}catch(e){toast('⚠️','Stream cancelled')}
@@ -345,7 +344,7 @@ window.addEventListener('beforeunload',()=>{if(S.stream)S.stream.getTracks().for
 function toast(ic,tx){const e=document.createElement('div');e.className='toast';e.innerHTML=`<span style="font-size:16px">${ic}</span><span>${tx}</span>`;$('#toasts').appendChild(e);setTimeout(()=>e.remove(),3000)}
 
 // ===== REALTIME SERVER + WEBRTC OVERRIDES =====
-const SERVER_URL = "https://YOUR-SERVER.onrender.com"; // replace after deploying the server
+const SERVER_URL = "https://cat-dressing-server-app.vercel.app";
 S.socket=null; S.pc=null; S.callWith=null; S.incomingFrom=null; S.localStream=null; S.screenStream=null; S.muted=false; S.deaf=false;
 
 function connectRealtime(){
@@ -403,9 +402,7 @@ $('#bcall').onclick=startCall;$('#cmute').onclick=toggleMute;$('#cdeaf').onclick
 $('#binv').onclick=()=>{$('#minv').classList.remove('h');$('#iinput').value='';$('#iinput').focus()};
 $('#bsinv').onclick=sendInvite;$('#fsearch').oninput=renderFriends;
 $('#bside').onclick=()=>$('#side').classList.toggle('open');
-$('#bleave').onclick=()=>$('#mleave').classList.remove('h');$('#bcleave').onclick=leave;
-$$('[data-c]').forEach(b=>b.onclick=()=>{const id=b.dataset.c;if(id)$('#'+id).classList.add('h')});
-$$('.mod').forEach(m=>m.onclick=e=>{if(e.target===m)m.classList.add('h')});
+$('#bleave').onclick=()=>$('#mleave').classList.remove('h');$('#bcleave').onclick=leave; $$('[data-c]').forEach(b=>b.onclick=()=>{const id=b.dataset.c;if(id)$('#'+id).classList.add('h')}); $$('.mod').forEach(m=>m.onclick=e=>{if(e.target===m)m.classList.add('h')});
 })();
 </script>
 </body>
