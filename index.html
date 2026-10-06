@@ -105,6 +105,12 @@ html,body{height:100%;overflow:hidden;font-family:var(--f);background:var(--bg);
 #toasts{position:fixed;top:52px;left:10px;z-index:90;display:flex;flex-direction:column;gap:5px}
 .toast{background:var(--glass);border:1px solid var(--border);border-radius:9px;padding:9px 12px;min-width:200px;max-width:300px;display:flex;align-items:center;gap:7px;font-size:.8rem;animation:ti .2s ease-out}
 @keyframes ti{from{opacity:0;transform:translateX(-16px)}}
+#remoteAudio,#remoteScreenAudio{display:none}
+#remoteVideo:fullscreen{width:100vw;height:100vh;object-fit:contain;background:#000}
+#remoteVideo::-webkit-media-controls{display:none!important}
+#videofloat.streamwatch #remoteVideo{cursor:default}
+#cscreenmute.off,#vscreenmute.off{background:rgba(255,82,82,.28);border-color:var(--danger);color:#ffcdd2}
+#cscreenmute.on-state,#vscreenmute.on-state{background:rgba(105,240,174,.15);border-color:var(--mint)}
 #videofloat{position:fixed;bottom:14px;left:14px;z-index:35;display:none;flex-direction:column;gap:6px;width:380px;max-width:calc(100vw - 28px);background:var(--glass);border:1px solid var(--border);border-radius:14px;padding:10px;backdrop-filter:blur(14px);box-shadow:0 10px 40px rgba(0,0,0,.5)}
 #videofloat.on{display:flex}
 #videofloat.mini{width:auto;min-width:160px;padding:6px 10px}
@@ -124,6 +130,11 @@ html,body{height:100%;overflow:hidden;font-family:var(--f);background:var(--bg);
 .vheader strong{font-size:.82rem;color:var(--gold);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .vheader .vbtns{display:flex;gap:4px;flex-shrink:0}
 .vheader button{background:rgba(5,14,28,.55);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:4px 8px;font-size:.68rem;cursor:pointer}
+#videofloat.streamwatch{display:flex;align-items:stretch;justify-content:center}
+#videofloat.streamwatch .vwrap{background:#000}
+#videofloat.streamwatch #remoteVideo{object-fit:contain}
+#videofloat.streamwatch .vheader{pointer-events:auto}
+
 .vwrap{display:grid;grid-template-columns:1fr 1fr;gap:6px;position:relative}
 .vwrap video{width:100%;height:150px;object-fit:cover;background:#000;border-radius:8px;border:1px solid var(--border)}
 .vstatus{font-size:.65rem;color:var(--dim);text-align:center;margin-top:2px}
@@ -170,10 +181,9 @@ html,body{height:100%;overflow:hidden;font-family:var(--f);background:var(--bg);
     <span class="cb-name" id="cname">في مكالمة</span>
     <button class="cb-btn on-state" id="cmute">🎤 مايك: On</button>
     <button class="cb-btn on-state" id="cdeaf">🔊 ديفن: Off</button>
-    <button class="cb-btn" id="cfixaudio">🔊 تشغيل الصوت</button>
-    <button class="cb-btn on-state" id="cnoise">🧹 تصفية الضوضاء: On</button>
     <button class="cb-btn" id="cstream">🖥️ شير سكرين</button>
     <button class="cb-btn on-state" id="ccam">📷 كاميرا: On</button>
+    <button class="cb-btn" id="cscreenmute" style="display:none">🔊 MUTE SCREEN</button>
     <button class="cb-btn" id="cwatch">▶ مشاهدة الاستريم</button>
     <button class="cb-btn" id="cexpand">⛶ تكبير</button>
     <button class="cb-btn" id="cmin">⬇️ تصغير</button>
@@ -217,6 +227,7 @@ html,body{height:100%;overflow:hidden;font-family:var(--f);background:var(--bg);
     <strong id="vtitle">مكالمة</strong>
     <div class="vbtns">
       <button id="vwatch">▶ استريم</button>
+      <button id="vscreenmute" style="display:none">🔊 MUTE SCREEN</button>
       <button id="vexpand">⛶</button>
       <button id="vmax">⬇️</button>
       <button id="vclose">✕</button>
@@ -225,6 +236,8 @@ html,body{height:100%;overflow:hidden;font-family:var(--f);background:var(--bg);
   <div class="vwrap">
     <video id="remoteVideo" autoplay playsinline></video>
     <video id="localVideo" autoplay playsinline muted></video>
+    <audio id="remoteAudio" autoplay playsinline></audio>
+    <audio id="remoteScreenAudio" autoplay playsinline></audio>
   </div>
   <div class="vstatus" id="vstatus">جاري الاتصال...</div>
 </div>
@@ -256,759 +269,3550 @@ html,body{height:100%;overflow:hidden;font-family:var(--f);background:var(--bg);
 <script>
 (function(){
 'use strict';
+
 const SERVER_URL = "https://cat-dressing-server-app.vercel.app";
+
 const S = {
   nick:'', av:'🐱', friends:[], active:null, chats:{},
-  socket:null, pc:null, callWith:null, incomingFrom:null,
-  localStream:null, screenStream:null, audioCtx:null, mixedAudioTrack:null,
-  muted:false, deaf:false, camOn:true, sharing:false, noiseOn:true,
-  videoMode:'normal', joined:false, heartbeat:null, makingOffer:false, permsOk:false
+  socket:null,
+
+  pc:null,
+  callWith:null,
+  incomingFrom:null,
+  makingOffer:false,
+
+  localStream:null,
+  screenStream:null,
+
+  screenAudioTransceiver:null,
+  screenAudioSender:null,
+  screenAudioTrackId:null,
+
+  remoteAudioCtx:null,
+  remoteAudioTracks:{},
+  remoteVoiceAudioId:null,
+  remoteScreenAudioId:null,
+  remoteScreenActive:false,
+  remoteScreenHasAudio:false,
+  remoteScreenAudioPending:false,
+
+  muted:false,
+  deaf:false,
+  camOn:true,
+  sharing:false,
+
+  videoMode:'normal',
+  joined:false,
+
+  heartbeat:null,
+  permsOk:false
 };
-const AVS = ['🐱','😺','😸','😻','😼','🙀','😿','😾','🐈','🦁'];
-const $ = s => document.querySelector(s);
-const $$ = s => document.querySelectorAll(s);
-const esc = s => { const d=document.createElement('div'); d.textContent=s; return d.innerHTML; };
+
+const AVS=['🐱','😺','😸','😻','😼','🙀','😿','😾','🐈','🦁'];
+
+const $=s=>document.querySelector(s);
+const $$=s=>document.querySelectorAll(s);
+
+const esc=s=>{
+  const d=document.createElement('div');
+  d.textContent=s??'';
+  return d.innerHTML;
+};
+
+/* =========================================================
+   BOOT
+========================================================= */
 
 function boot(){
-  try{ setupEntry(); }catch(e){ console.error(e); }
-  const loader=$('#load');
-  if(loader){ loader.classList.add('gone'); setTimeout(()=>loader.remove(),500); }
-}
-if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',boot,{once:true});
-else boot();
-
-function setupEntry(){
-  const row=$('#avs');
-  AVS.forEach((a,i)=>{
-    const e=document.createElement('div');
-    e.className='av'+(i===0?' on':''); e.textContent=a;
-    e.onclick=()=>{ $$('.av').forEach(x=>x.classList.remove('on')); e.classList.add('on'); S.av=a; ready(); };
-    row.appendChild(e);
-  });
-  $('#nick').oninput=()=>{ $('#nerr').classList.remove('on'); ready(); };
-  $('#nick').onkeydown=e=>{ if(e.key==='Enter'&&!$('#benter').disabled) enter(); };
-  $('#benter').onclick=enter;
-}
-function ready(){ $('#benter').disabled=$('#nick').value.trim().length<2; }
-function toast(ic,tx){
-  const e=document.createElement('div'); e.className='toast';
-  e.innerHTML=`<span style="font-size:16px">${ic}</span><span>${tx}</span>`;
-  $('#toasts').appendChild(e); setTimeout(()=>e.remove(),4500);
-}
-
-/* ===== FORCE MIC + CAMERA PERMISSIONS ON ENTER ===== */
-async function requestAllPermissions(){
   try{
-    // افتح AudioContext بدري عشان الصوت يشتغل بعدين
-    try{
-      const ac=new (window.AudioContext||window.webkitAudioContext)();
-      if(ac.state==='suspended') await ac.resume();
-      await ac.close();
-    }catch(e){}
+    setupEntry();
+    wireEvents();
+  }catch(e){
+    console.error('boot',e);
+  }
 
-    let stream=null;
-    try{
-      stream=await navigator.mediaDevices.getUserMedia({
-        audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true},
-        video:{width:{ideal:640},height:{ideal:480},facingMode:'user'}
-      });
-    }catch(e){
-      stream=await navigator.mediaDevices.getUserMedia({
-        audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true},
-        video:false
-      });
-    }
-    // وقف التراكات — احنا بس عايزين الإذن
-    stream.getTracks().forEach(t=>t.stop());
-    S.permsOk=true;
-    toast('🎤','المايك والكاميرا جاهزين');
-    return true;
-  }catch(err){
-    console.warn('permissions denied', err);
-    toast('⚠️','لازم توافق على المايك عشان المكالمات تشتغل');
-    S.permsOk=false;
-    return false;
+  const loader=$('#load');
+  if(loader){
+    loader.classList.add('gone');
+    setTimeout(()=>loader.remove(),500);
   }
 }
 
-function connectRealtime(){
-  if(S.socket){ try{ S.socket.removeAllListeners(); S.socket.disconnect(); }catch(e){} }
-  S.socket=io(SERVER_URL,{
-    transports:['websocket','polling'], reconnection:true, reconnectionAttempts:Infinity,
-    reconnectionDelay:800, reconnectionDelayMax:5000, timeout:15000, forceNew:true
+if(document.readyState==='loading'){
+  document.addEventListener('DOMContentLoaded',boot,{once:true});
+}else{
+  boot();
+}
+
+/* =========================================================
+   ENTRY
+========================================================= */
+
+function setupEntry(){
+  const row=$('#avs');
+
+  if(!row)return;
+
+  row.innerHTML='';
+
+  AVS.forEach((a,i)=>{
+    const e=document.createElement('div');
+    e.className='av'+(i===0?' on':'');
+    e.textContent=a;
+
+    e.onclick=()=>{
+      $$('.av').forEach(x=>x.classList.remove('on'));
+      e.classList.add('on');
+      S.av=a;
+      ready();
+    };
+
+    row.appendChild(e);
   });
-  S.socket.on('connect',()=>{
-    S.socket.emit('user:join',{name:S.nick,av:S.av});
-    startHeartbeat();
-    if(S.joined) toast('🔄','رجع الاتصال');
-  });
-  S.socket.on('disconnect',()=>{ stopHeartbeat(); if(S.joined) toast('⚠️','انقطع... بيرجع'); });
-  S.socket.on('user:error',m=>{ $('#nerr').textContent=m; $('#nerr').classList.add('on'); });
-  S.socket.on('user:joined',()=>{
-    S.joined=true; $('#mn').textContent=S.nick; $('#mav').textContent=S.av;
-    $('#entry').style.display='none'; $('#app').classList.add('on');
-    toast('✨','أهلاً يا '+S.nick);
-  });
-  S.socket.on('users:list',list=>{
-    S.friends=list.filter(f=>f.n.toLowerCase()!==S.nick.toLowerCase())
-      .map(f=>{ const o=S.friends.find(x=>x.n.toLowerCase()===f.n.toLowerCase()); return {...f,added:o?.added||false}; });
-    renderFriends();
-  });
-  S.socket.on('invite:sent',x=>toast('📨','الدعوة اتبعتت لـ '+x.to));
-  S.socket.on('invite:error',m=>toast('⚠️',m));
-  S.socket.on('invite:received',x=>{
-    if(confirm(x.from.n+' دعاك. تقبل؟')){ S.socket.emit('invite:accept',{from:x.from.n}); addFriend(x.from); }
-  });
-  S.socket.on('friend:added',u=>{ addFriend(u); toast('🐾',u.n+' بقى صاحبك'); });
-  S.socket.on('chat:message',x=>{
-    if(!S.chats[x.from]) S.chats[x.from]=[]; S.chats[x.from].push(x.message);
-    if(S.active===x.from) renderMsgs(); else toast('💬','رسالة من '+x.from);
-  });
-  S.socket.on('chat:sent',x=>{
-    if(!S.chats[x.to]) S.chats[x.to]=[]; S.chats[x.to].push(x.message);
-    if(S.active===x.to) renderMsgs();
-  });
-  S.socket.on('chat:file',x=>{
-    if(!S.chats[x.from]) S.chats[x.from]=[];
-    S.chats[x.from].push({author:x.file.author,av:x.file.av,fileName:x.file.fileName,mime:x.file.mime,data:x.file.data,time:x.file.time});
-    if(S.active===x.from) renderMsgs(); else toast('📎','ملف من '+x.from);
-  });
-  S.socket.on('chat:fileSent',x=>{
-    if(!S.chats[x.to]) S.chats[x.to]=[];
-    S.chats[x.to].push({author:x.file.author,av:x.file.av,fileName:x.file.fileName,mime:x.file.mime,data:x.file.data,time:x.file.time,own:true});
-    if(S.active===x.to) renderMsgs();
-  });
-  S.socket.on('file:error',m=>toast('⚠️',m));
-  S.socket.on('call:incoming',x=>incomingCall(x.from));
-  S.socket.on('call:accept',async x=>{ if(x.from===S.callWith) await makeOffer(); });
-  S.socket.on('call:reject',x=>{ toast('📵',x.from+' رفض'); cleanupCall(false); });
-  S.socket.on('call:offer',async x=>await handleOffer(x));
-  S.socket.on('call:answer',async x=>{
-    if(S.pc&&x.sdp){
-      try{
-        const st=S.pc.signalingState;
-        if(st==='have-local-offer' || !S.pc.currentRemoteDescription){
-          await S.pc.setRemoteDescription(x.sdp);
-        }
-      }catch(e){ console.warn('answer err',e); }
+
+  $('#nick').oninput=()=>{
+    $('#nerr').classList.remove('on');
+    ready();
+  };
+
+  $('#nick').onkeydown=e=>{
+    if(e.key==='Enter'&&!$('#benter').disabled){
+      enter();
     }
-  });
-  S.socket.on('call:ice',async x=>{ if(S.pc&&x.candidate) try{ await S.pc.addIceCandidate(x.candidate); }catch(e){} });
-  S.socket.on('call:hangup',x=>{ toast('📞',x.from+' قفل'); cleanupCall(false); });
-  S.socket.on('call:screenshare',x=>{
-    if(x.from===S.callWith){
-      if(x.on){ showWatchBtn(true); toast('🖥️',x.from+' بيشارك الشاشة'); }
-      else{ showWatchBtn(false); if(S.videoMode==='streamwatch') setVideoMode('normal'); }
+  };
+
+  $('#benter').onclick=enter;
+
+  ready();
+}
+
+function ready(){
+  const b=$('#benter');
+  if(b){
+    b.disabled=($('#nick')?.value.trim().length||0)<2;
+  }
+}
+
+/* =========================================================
+   TOAST
+========================================================= */
+
+function toast(ic,tx){
+  const e=document.createElement('div');
+  e.className='toast';
+  e.innerHTML=
+    `<span style="font-size:16px">${ic}</span>`+
+    `<span>${esc(tx)}</span>`;
+
+  const host=$('#toasts');
+  if(host)host.appendChild(e);
+
+  setTimeout(()=>e.remove(),4500);
+}
+
+/* =========================================================
+   AUDIO UNLOCK
+========================================================= */
+
+/*
+  AudioContext is created/resumed from the user's click that
+  starts/accepts the call. This greatly reduces autoplay issues.
+*/
+async function ensureRemoteAudioContext(){
+  try{
+    if(!S.remoteAudioCtx){
+      const Ctx=window.AudioContext||window.webkitAudioContext;
+      if(!Ctx)return null;
+
+      S.remoteAudioCtx=new Ctx();
+    }
+
+    if(S.remoteAudioCtx.state==='suspended'){
+      await S.remoteAudioCtx.resume();
+    }
+
+    return S.remoteAudioCtx;
+
+  }catch(e){
+    console.warn('remote audio context',e);
+    return null;
+  }
+}
+
+function replayRemoteAudio(){
+  try{
+    if(S.remoteAudioCtx?.state==='suspended'){
+      S.remoteAudioCtx.resume().catch(()=>{});
+    }
+  }catch(e){}
+
+  ['#remoteAudio','#remoteScreenAudio'].forEach(sel=>{
+    const el=$(sel);
+    if(el?.srcObject){
+      el.play().catch(()=>{});
     }
   });
 }
-function startHeartbeat(){ stopHeartbeat(); S.heartbeat=setInterval(()=>{ if(S.socket&&S.socket.connected) S.socket.emit('ping',{t:Date.now()}); },15000); }
-function stopHeartbeat(){ if(S.heartbeat){ clearInterval(S.heartbeat); S.heartbeat=null; } }
+
+function attachFallbackAudio(track,isScreen){
+  const id=isScreen?'remoteScreenAudio':'remoteAudio';
+  const el=$('#'+id);
+
+  if(!el)return;
+
+  el.muted=
+    S.deaf ||
+    (isScreen && S.screenMuted);
+
+  el.volume=
+    S.deaf ||
+    (isScreen && S.screenMuted)
+      ?0
+      :1;
+
+  el.srcObject=new MediaStream([track]);
+
+  el.play().catch(()=>{
+    toast('🔊','دوس أي زر في الصفحة لو الصوت مش اشتغل');
+  });
+}
+
+/* =========================================================
+   SOCKET
+========================================================= */
+
+function connectRealtime(){
+
+  if(typeof io!=='function'){
+    toast('⚠️','Socket.IO مش اتحمّل');
+    return;
+  }
+
+  if(S.socket){
+    try{
+      S.socket.removeAllListeners();
+      S.socket.disconnect();
+    }catch(e){}
+  }
+
+  S.socket=io(SERVER_URL,{
+    transports:['websocket','polling'],
+    reconnection:true,
+    reconnectionAttempts:Infinity,
+    reconnectionDelay:800,
+    reconnectionDelayMax:5000,
+    timeout:15000,
+    forceNew:true
+  });
+
+  S.socket.on('connect',()=>{
+
+    S.socket.emit(
+      'user:join',
+      {name:S.nick,av:S.av}
+    );
+
+    startHeartbeat();
+
+    if(S.joined){
+      toast('🔄','الاتصال رجع');
+    }
+  });
+
+  S.socket.on('disconnect',()=>{
+
+    stopHeartbeat();
+
+    if(S.joined){
+      toast('⚠️','انقطع الاتصال... بيحاول يرجع');
+    }
+  });
+
+  S.socket.on('connect_error',e=>{
+    console.warn('socket connect_error',e);
+  });
+
+  S.socket.on('user:error',m=>{
+    $('#nerr').textContent=m;
+    $('#nerr').classList.add('on');
+  });
+
+  S.socket.on('user:joined',()=>{
+
+    S.joined=true;
+
+    $('#mn').textContent=S.nick;
+    $('#mav').textContent=S.av;
+
+    $('#entry').style.display='none';
+    $('#app').classList.add('on');
+
+    toast('✨','أهلاً يا '+S.nick);
+  });
+
+  S.socket.on('users:list',list=>{
+
+    S.friends=(Array.isArray(list)?list:[])
+      .filter(f=>
+        String(f.n||'').toLowerCase()!==S.nick.toLowerCase()
+      )
+      .map(f=>{
+
+        const old=S.friends.find(
+          x=>x.n?.toLowerCase()===f.n?.toLowerCase()
+        );
+
+        return {
+          ...f,
+          added:old?.added||false
+        };
+      });
+
+    renderFriends();
+  });
+
+  /* INVITES */
+
+  S.socket.on('invite:sent',x=>
+    toast('📨','الدعوة اتبعتت لـ '+x.to)
+  );
+
+  S.socket.on('invite:error',m=>
+    toast('⚠️',m)
+  );
+
+  S.socket.on('invite:received',x=>{
+
+    if(!x?.from?.n)return;
+
+    if(confirm(x.from.n+' دعاك. تقبل؟')){
+
+      S.socket.emit(
+        'invite:accept',
+        {from:x.from.n}
+      );
+
+      addFriend(x.from);
+    }
+  });
+
+  S.socket.on('friend:added',u=>{
+
+    addFriend(u);
+
+    toast(
+      '🐾',
+      u.n+' بقى صاحبك'
+    );
+  });
+
+  /* CHAT */
+
+  S.socket.on('chat:message',x=>{
+
+    if(!x?.from)return;
+
+    if(!S.chats[x.from]){
+      S.chats[x.from]=[];
+    }
+
+    S.chats[x.from].push(x.message);
+
+    if(S.active===x.from){
+      renderMsgs();
+    }else{
+      toast('💬','رسالة من '+x.from);
+    }
+  });
+
+  S.socket.on('chat:sent',x=>{
+
+    if(!x?.to)return;
+
+    if(!S.chats[x.to]){
+      S.chats[x.to]=[];
+    }
+
+    S.chats[x.to].push({
+      ...x.message,
+      own:true
+    });
+
+    if(S.active===x.to){
+      renderMsgs();
+    }
+  });
+
+  S.socket.on('chat:file',x=>{
+
+    if(!x?.from||!x.file)return;
+
+    if(!S.chats[x.from]){
+      S.chats[x.from]=[];
+    }
+
+    S.chats[x.from].push({
+      author:x.file.author,
+      av:x.file.av,
+      fileName:x.file.fileName,
+      mime:x.file.mime,
+      data:x.file.data,
+      time:x.file.time
+    });
+
+    if(S.active===x.from){
+      renderMsgs();
+    }else{
+      toast('📎','ملف من '+x.from);
+    }
+  });
+
+  S.socket.on('chat:fileSent',x=>{
+
+    if(!x?.to||!x.file)return;
+
+    if(!S.chats[x.to]){
+      S.chats[x.to]=[];
+    }
+
+    S.chats[x.to].push({
+      author:x.file.author,
+      av:x.file.av,
+      fileName:x.file.fileName,
+      mime:x.file.mime,
+      data:x.file.data,
+      time:x.file.time,
+      own:true
+    });
+
+    if(S.active===x.to){
+      renderMsgs();
+    }
+  });
+
+  S.socket.on('file:error',m=>
+    toast('⚠️',m)
+  );
+
+  /* =======================================================
+     CALL SIGNALING
+  ======================================================= */
+
+  S.socket.on('call:incoming',x=>{
+    incomingCall(x?.from);
+  });
+
+  S.socket.on('call:accept',async x=>{
+
+    if(x?.from===S.callWith){
+      await makeOffer();
+    }
+  });
+
+  S.socket.on('call:reject',x=>{
+
+    if(!S.callWith||x?.from===S.callWith){
+
+      toast(
+        '📵',
+        (x?.from||'الطرف الآخر')+' رفض المكالمة'
+      );
+
+      cleanupCall(false);
+    }
+  });
+
+  S.socket.on('call:offer',async x=>{
+
+    if(x?.sdp){
+      await handleOffer(x);
+    }
+  });
+
+  S.socket.on('call:answer',async x=>{
+
+    if(!x?.sdp||!S.pc)return;
+
+    try{
+
+      if(
+        S.pc.signalingState==='have-local-offer' ||
+        !S.pc.currentRemoteDescription
+      ){
+
+        await S.pc.setRemoteDescription(
+          x.sdp
+        );
+      }
+
+    }catch(e){
+
+      console.warn(
+        'answer error',
+        e
+      );
+    }
+  });
+
+  S.socket.on('call:ice',async x=>{
+
+    if(
+      S.pc&&
+      x?.candidate
+    ){
+
+      try{
+        await S.pc.addIceCandidate(
+          x.candidate
+        );
+      }catch(e){}
+    }
+  });
+
+  S.socket.on('call:hangup',x=>{
+
+    toast(
+      '📞',
+      (x?.from||'الطرف الآخر')+' قفل المكالمة'
+    );
+
+    cleanupCall(false);
+  });
+
+  /*
+     Current server uses call:screen-start/stop.
+     Legacy listener is included too so older server code works.
+  */
+
+  S.socket.on(
+    'call:screen-start',
+    handleRemoteScreenStart
+  );
+
+  S.socket.on(
+    'call:screen-stop',
+    handleRemoteScreenStop
+  );
+
+  S.socket.on(
+    'call:screenshare',
+    x=>{
+      if(x?.on){
+        handleRemoteScreenStart(x);
+      }else{
+        handleRemoteScreenStop(x);
+      }
+    }
+  );
+}
+
+/* =========================================================
+   SCREEN SIGNALING
+========================================================= */
+
+function handleRemoteScreenStart(x){
+
+  if(
+    x?.from&&
+    S.callWith&&
+    x.from!==S.callWith
+  ){
+    return;
+  }
+
+  S.remoteScreenActive=true;
+  S.remoteScreenHasAudio=!!(
+    x?.hasAudio||
+    x?.audioTrackId
+  );
+
+  S.remoteScreenAudioId=
+    x?.audioTrackId||
+    null;
+
+  S.remoteScreenAudioPending=
+    S.remoteScreenHasAudio&&
+    !S.remoteScreenAudioId;
+
+  /*
+     Route the exact track immediately if it already exists.
+  */
+  if(
+    S.remoteScreenAudioId
+  ){
+
+    const track=
+      S.remoteAudioTracks[
+        S.remoteScreenAudioId
+      ];
+
+    if(track){
+
+      routeRemoteAudioTrack(
+        track,
+        true
+      );
+    }
+
+  }else if(
+    S.remoteScreenAudioPending
+  ){
+
+    /*
+       Old server fallback:
+       choose the newest audio track that isn't
+       the normal voice track.
+    */
+    const candidates=
+      Object.values(
+        S.remoteAudioTracks
+      )
+      .filter(
+        t=>t.id!==S.remoteVoiceAudioId
+      );
+
+    if(candidates.length){
+
+      const track=
+        candidates[
+          candidates.length-1
+        ];
+
+      setRemoteScreenAudio(
+        track
+      );
+
+      S.remoteScreenAudioPending=false;
+    }
+  }
+
+  showWatchBtn(true);
+  updateScreenMuteBtn();
+
+  toast(
+    '🖥️',
+    (x?.from||S.callWith||'الطرف الآخر')+
+    ' فتح استريم الشاشة'
+  );
+}
+
+function handleRemoteScreenStop(x){
+
+  if(
+    x?.from&&
+    S.callWith&&
+    x.from!==S.callWith
+  ){
+    return;
+  }
+
+  S.remoteScreenActive=false;
+  S.remoteScreenHasAudio=false;
+  S.remoteScreenAudioPending=false;
+
+  const screen=$(
+    '#remoteScreenAudio'
+  );
+
+  if(screen){
+
+    screen.pause();
+    screen.srcObject=null;
+  }
+
+  S.remoteScreenAudioId=null;
+
+  showWatchBtn(false);
+
+  if(
+    S.videoMode==='streamwatch'
+  ){
+
+    exitStreamWatch();
+  }
+
+  updateScreenMuteBtn();
+}
+
+function setRemoteScreenAudio(track){
+
+  if(!track)return;
+
+  S.remoteScreenAudioId=
+    track.id;
+
+  S.remoteScreenHasAudio=true;
+
+  routeRemoteAudioTrack(
+    track,
+    true
+  );
+
+  updateScreenMuteBtn();
+}
+
+function updateScreenMuteBtn(){
+
+  const available=
+    S.remoteScreenActive &&
+    S.remoteScreenHasAudio;
+
+  ['#cscreenmute','#vscreenmute'].forEach(sel=>{
+
+    const b=$(sel);
+
+    if(!b)return;
+
+    b.style.display=
+      available
+        ?'inline-flex'
+        :'none';
+
+    if(!available){
+      b.classList.remove('off','on-state');
+      return;
+    }
+
+    b.textContent=
+      S.screenMuted
+        ?'🔇 UNMUTE SCREEN'
+        :'🔊 MUTE SCREEN';
+
+    b.classList.toggle(
+      'off',
+      S.screenMuted
+    );
+
+    b.classList.toggle(
+      'on-state',
+      !S.screenMuted
+    );
+  });
+}
+
+function toggleScreenMute(){
+
+  if(
+    !S.remoteScreenActive||
+    !S.remoteScreenHasAudio
+  ){
+
+    toast(
+      'ℹ️',
+      'صوت الاستريم مش متاح دلوقتي'
+    );
+
+    return;
+  }
+
+  S.screenMuted=
+    !S.screenMuted;
+
+  const screen=$(
+    '#remoteScreenAudio'
+  );
+
+  if(screen){
+
+    screen.muted=
+      S.deaf||
+      S.screenMuted;
+
+    screen.volume=
+      S.deaf||
+      S.screenMuted
+        ?0
+        :1;
+
+    screen.play().catch(()=>{});
+  }
+
+  updateScreenMuteBtn();
+
+  toast(
+    S.screenMuted
+      ?'🔇'
+      :'🔊',
+    S.screenMuted
+      ?'صوت الاستريم: MUTE'
+      :'صوت الاستريم: ON'
+  );
+}
+
+/* =========================================================
+   HEARTBEAT
+========================================================= */
+
+function startHeartbeat(){
+
+  stopHeartbeat();
+
+  S.heartbeat=
+    setInterval(()=>{
+
+      if(
+        S.socket&&
+        S.socket.connected
+      ){
+
+        S.socket.emit(
+          'ping',
+          {t:Date.now()}
+        );
+      }
+
+    },15000);
+}
+
+function stopHeartbeat(){
+
+  if(S.heartbeat){
+
+    clearInterval(
+      S.heartbeat
+    );
+
+    S.heartbeat=null;
+  }
+}
+
+/* =========================================================
+   FRIENDS
+========================================================= */
+
 function addFriend(u){
-  if(!u) return;
-  let f=S.friends.find(x=>x.n.toLowerCase()===u.n.toLowerCase());
-  if(f) f.added=true; else S.friends.push({...u,added:true});
+
+  if(!u?.n)return;
+
+  let f=S.friends.find(
+    x=>x.n?.toLowerCase()===
+    u.n.toLowerCase()
+  );
+
+  if(f){
+
+    f.added=true;
+
+  }else{
+
+    S.friends.push({
+      ...u,
+      added:true
+    });
+  }
+
   renderFriends();
 }
 
 async function enter(){
-  const n=$('#nick').value.trim().slice(0,16);
-  if(n.length<2) return;
+
+  const n=$('#nick')
+    .value
+    .trim()
+    .slice(0,16);
+
+  if(n.length<2)return;
+
   S.nick=n;
-  // إجباري: اطلب المايك/الكاميرا قبل الدخول
+
+  /*
+     This is intentionally a permission warm-up only.
+     Tracks are stopped immediately and real tracks are opened
+     when the call starts. Screen-share remains user initiated.
+  */
   await requestAllPermissions();
+
+  /*
+     Warm remote audio handling from a user gesture.
+  */
+  await ensureRemoteAudioContext();
+
   connectRealtime();
 }
 
-function renderFriends(){
-  const q=($('#fsearch').value||'').toLowerCase();
-  const list=S.friends.filter(f=>!q||f.n.toLowerCase().includes(q));
-  const el=$('#flist');
-  if(!list.length){ el.innerHTML='<div class="empty">مفيش صحاب لسه.<br>ادعُ حد بالاسم.</div>'; return; }
-  el.innerHTML=list.map(f=>`<div class="si ${S.active===f.n?'active':''}" data-n="${f.n}"><span class="sa">${f.a}</span><div><div class="sn">${f.n}</div><div class="ssub">${f.online?'أونلاين':'أوفلاين'}</div></div><span class="dot ${f.online?'':'off'}"></span></div>`).join('');
-  el.querySelectorAll('.si').forEach(item=>{ item.onclick=()=>openChat(item.dataset.n); });
-}
-function openChat(name){
-  S.active=name; if(!S.chats[name]) S.chats[name]=[];
-  $('#rtitle').textContent=name; $('#rsub').textContent='محادثة خاصة';
-  $('#bcall').disabled=false; $('#mi').disabled=false; $('#bsend').disabled=false;
-  renderFriends(); renderMsgs();
-}
-function renderMsgs(){
-  const list=S.active?(S.chats[S.active]||[]):[];
-  let h='';
-  if(!S.active) h='<div class="msg sys"><div class="mi">✨</div><div><div class="ma">Realm Guide</div><div class="mt">ادعُ صاحب بالاسم بالظبط عشان تبدأ.</div></div></div>';
-  else if(!list.length) h=`<div class="msg sys"><div class="mi">✨</div><div><div class="ma">Realm Guide</div><div class="mt">محادثة مع ${esc(S.active)}. الرسائل مؤقتة.</div></div></div>`;
-  list.forEach(m=>{
-    let body=m.fileName?`<button class="btn2 dl" data-file="${encodeURIComponent(m.data)}" data-name="${encodeURIComponent(m.fileName)}">📎 ${esc(m.fileName)}</button>`
-      :m.img?`<img class="mimg" src="${m.img}">`:m.vid?`<video class="mvid" src="${m.vid}" controls></video>`:`<div class="mt">${esc(m.text)}</div>`;
-    h+=`<div class="msg ${m.own?'own':''}"><div class="mi">${m.av}</div><div><div class="ma">${esc(m.author)}</div>${body}<div class="mtime">${m.time}</div></div></div>`;
-  });
-  $('#msgs').innerHTML=h; $('#msgs').scrollTop=$('#msgs').scrollHeight;
-  $$('.dl').forEach(b=>{ b.onclick=()=>{ const a=document.createElement('a'); a.href=decodeURIComponent(b.dataset.file); a.download=decodeURIComponent(b.dataset.name); document.body.appendChild(a); a.click(); a.remove(); }; });
-}
-function sendMsg(){
-  if(!S.active||!S.socket||!S.socket.connected){ toast('⚠️','مش متصل'); return; }
-  const t=$('#mi').value.trim(); if(!t) return;
-  S.socket.emit('chat:message',{to:S.active,message:t}); $('#mi').value='';
-}
-function handleFile(inp){
-  if(!S.active||!inp.files[0]) return;
-  if(!S.socket||!S.socket.connected){ toast('⚠️','مش متصل'); return; }
-  const f=inp.files[0];
-  if(f.size>20*1024*1024){ toast('⚠️','أقصى حجم 20 ميجا'); inp.value=''; return; }
-  const r=new FileReader();
-  r.onload=()=>S.socket.emit('chat:file',{to:S.active,name:f.name,type:f.type,data:r.result});
-  r.readAsDataURL(f); inp.value='';
-}
-function sendInvite(){
-  const n=$('#iinput').value.trim(); if(n.length<2) return;
-  if(n.toLowerCase()===S.nick.toLowerCase()) return toast('⚠️','مش هتدعو نفسك');
-  if(!S.socket||!S.socket.connected) return toast('⚠️','مش متصل');
-  S.socket.emit('invite:send',{to:n}); $('#minv').classList.add('h');
-}
+async function requestAllPermissions(){
 
-function showCallUI(){
-  $('#callbar').classList.add('on'); $('#cname').textContent='مع '+S.callWith;
-  setVideoMode('normal'); $('#videofloat').classList.add('on');
-  $('#vtitle').textContent='مكالمة مع '+S.callWith; $('#vstatus').textContent='جاري الاتصال...';
-  updateAllBtns();
-}
-function hideCallUI(){
-  $('#callbar').classList.remove('on');
-  $('#videofloat').classList.remove('on','mini','expanded','streamwatch');
-  $('#watchStreamBtn').classList.remove('on'); S.videoMode='normal';
-}
-function showWatchBtn(show){ if(show) $('#watchStreamBtn').classList.add('on'); else $('#watchStreamBtn').classList.remove('on'); }
-function setVideoMode(mode){
-  const box=$('#videofloat');
-  box.classList.remove('mini','expanded','streamwatch'); S.videoMode=mode;
-  if(mode==='mini') box.classList.add('mini');
-  else if(mode==='expanded') box.classList.add('expanded');
-  else if(mode==='streamwatch') box.classList.add('streamwatch');
-  $('#cmin').textContent=mode==='mini'?'⬆️ تكبير':'⬇️ تصغير';
-  $('#cexpand').textContent=mode==='streamwatch'?'⛶ خروج':(mode==='expanded'?'⛶ أكبر':'⛶ تكبير');
-  $('#cwatch').textContent=mode==='streamwatch'?'✕ خروج من الاستريم':'▶ مشاهدة الاستريم';
-  $('#vwatch').textContent=mode==='streamwatch'?'✕ خروج':'▶ استريم';
-}
-function enterStreamWatch(){
-  setVideoMode('streamwatch'); $('#watchStreamBtn').classList.remove('on');
-  const remote=$('#remoteVideo');
-  if(remote){ remote.muted=!!S.deaf; remote.volume=1; remote.play().catch(()=>{}); }
-  toast('🖥️','وضع الاستريم — Esc للخروج');
-}
-function exitStreamWatch(){ setVideoMode('normal'); }
+  try{
 
-async function startCall(){
-  if(!S.active||!S.socket||!S.socket.connected){ toast('⚠️','مش متصل'); return; }
-  if(S.pc||S.callWith){ toast('⚠️','أنت في مكالمة'); return; }
-  S.callWith=S.active; S.socket.emit('call:invite',{to:S.callWith});
-  showCallUI(); $('#vtitle').textContent='بتتصل بـ '+S.callWith+'...'; $('#vstatus').textContent='في انتظار الرد...';
-  toast('📞','بتتصل بـ '+S.callWith);
-}
-function incomingCall(from){
-  const name=(typeof from==='object'&&from.n)?from.n:from;
-  const av=(typeof from==='object'&&from.a)?from.a:'📞';
-  if(S.pc||S.callWith){ if(S.socket) S.socket.emit('call:reject',{to:name}); return; }
-  S.incomingFrom=name; $('#incAv').textContent=av; $('#incName').textContent=name+' بيكلمك';
-  $('#incoming').classList.add('on');
-}
-async function acceptIncoming(){
-  const from=S.incomingFrom; if(!from){ $('#incoming').classList.remove('on'); return; }
-  $('#incoming').classList.remove('on'); S.incomingFrom=null; S.callWith=from;
-  try{ await preparePeer(); if(S.socket) S.socket.emit('call:accept',{to:from}); showCallUI(); }
-  catch(e){ toast('⚠️','فشل قبول المكالمة'); cleanupCall(false); }
-}
-function rejectIncoming(){
-  if(S.incomingFrom&&S.socket) S.socket.emit('call:reject',{to:S.incomingFrom});
-  S.incomingFrom=null; $('#incoming').classList.remove('on');
-}
-
-function addRemoteTrack(track){
-  const remote=$('#remoteVideo');
-  if(!remote.srcObject) remote.srcObject=new MediaStream();
-  const stream=remote.srcObject;
-
-  if(track.kind==='video'){
-    if(![...stream.getTracks()].find(t=>t.id===track.id)){
-      stream.addTrack(track);
-      console.log('[remote]+ video', track.id.slice(0,8));
+    if(
+      !navigator.mediaDevices?.getUserMedia
+    ){
+      return false;
     }
-    remote.play().catch(()=>{});
+
+    let stream=null;
+
+    try{
+
+      stream=
+        await navigator.mediaDevices.getUserMedia({
+          audio:{
+            echoCancellation:true,
+            noiseSuppression:true,
+            autoGainControl:true
+          },
+          video:{
+            width:{ideal:640},
+            height:{ideal:480},
+            facingMode:'user'
+          }
+        });
+
+    }catch(e){
+
+      stream=
+        await navigator.mediaDevices.getUserMedia({
+          audio:{
+            echoCancellation:true,
+            noiseSuppression:true,
+            autoGainControl:true
+          },
+          video:false
+        });
+    }
+
+    stream
+      .getTracks()
+      .forEach(t=>t.stop());
+
+    S.permsOk=true;
+
+    toast(
+      '🎤',
+      'المايك والكاميرا جاهزين'
+    );
+
+    return true;
+
+  }catch(e){
+
+    console.warn(
+      'permission warmup',
+      e
+    );
+
+    S.permsOk=false;
+
+    toast(
+      '⚠️',
+      'المكالمات هتطلب الإذن وقت الاتصال'
+    );
+
+    return false;
+  }
+}
+
+/* =========================================================
+   CHAT
+========================================================= */
+
+function renderFriends(){
+
+  const q=(
+    $('#fsearch').value||''
+  ).toLowerCase();
+
+  const list=S.friends.filter(
+    f=>!q||
+    String(f.n)
+      .toLowerCase()
+      .includes(q)
+  );
+
+  const el=$('#flist');
+
+  if(!list.length){
+
+    el.innerHTML=
+      '<div class="empty">'+
+      'مفيش صحاب لسه.<br>'+
+      'ادعُ حد بالاسم.</div>';
+
     return;
   }
 
-  // AUDIO: الفيديو بيشغّل تراك صوت واحد بس — نشغّل كل تراكات الصوت عبر AudioContext
-  if(track.kind==='audio'){
-    track.enabled=true;
-    // برضو حطه في الـ stream عشان الـ video element (أول تراك)
-    if(![...stream.getTracks()].find(t=>t.id===track.id)){
-      stream.addTrack(track);
+  el.innerHTML=list.map(f=>`
+    <div
+      class="si ${S.active===f.n?'active':''}"
+      data-n="${esc(f.n)}"
+    >
+
+      <span class="sa">
+        ${f.a||'🐱'}
+      </span>
+
+      <div>
+
+        <div class="sn">
+          ${esc(f.n)}
+        </div>
+
+        <div class="ssub">
+          ${f.online?'أونلاين':'أوفلاين'}
+        </div>
+
+      </div>
+
+      <span
+        class="dot ${f.online?'':'off'}"
+      ></span>
+
+    </div>
+  `).join('');
+
+  el.querySelectorAll('.si').forEach(item=>{
+
+    item.onclick=()=>
+      openChat(item.dataset.n);
+
+  });
+}
+
+function openChat(name){
+
+  S.active=name;
+
+  if(!S.chats[name]){
+    S.chats[name]=[];
+  }
+
+  $('#rtitle').textContent=name;
+  $('#rsub').textContent='محادثة خاصة';
+
+  $('#bcall').disabled=false;
+
+  /*
+     Chat remains fully enabled during a call.
+  */
+  $('#mi').disabled=false;
+  $('#bsend').disabled=false;
+
+  renderFriends();
+  renderMsgs();
+
+  $('#mi').focus();
+}
+
+function renderMsgs(){
+
+  const list=
+    S.active
+      ?(S.chats[S.active]||[])
+      :[];
+
+  let h='';
+
+  if(!S.active){
+
+    h=
+      '<div class="msg sys">'+
+      '<div class="mi">✨</div>'+
+      '<div>'+
+      '<div class="ma">Realm Guide</div>'+
+      '<div class="mt">'+
+      'ادعُ صاحب بالاسم بالظبط عشان تبدأ.'+
+      '</div>'+
+      '</div>'+
+      '</div>';
+
+  }else if(!list.length){
+
+    h=
+      `<div class="msg sys">
+        <div class="mi">✨</div>
+        <div>
+          <div class="ma">Realm Guide</div>
+          <div class="mt">
+            محادثة مع ${esc(S.active)}. الرسائل مؤقتة.
+          </div>
+        </div>
+      </div>`;
+  }
+
+  list.forEach(m=>{
+
+    let body;
+
+    if(m.fileName){
+
+      body=
+        `<button
+          class="btn2 dl"
+          data-file="${encodeURIComponent(m.data)}"
+          data-name="${encodeURIComponent(m.fileName)}"
+        >
+          📎 ${esc(m.fileName)}
+        </button>`;
+
+    }else if(m.img){
+
+      body=
+        `<img
+          class="mimg"
+          src="${m.img}"
+        >`;
+
+    }else if(m.vid){
+
+      body=
+        `<video
+          class="mvid"
+          src="${m.vid}"
+          controls
+        ></video>`;
+
+    }else{
+
+      body=
+        `<div class="mt">
+          ${esc(m.text)}
+        </div>`;
     }
-    // وشغّله كمان من AudioContext عشان لو في أكتر من تراك صوت
-    try{
-      if(!S.remoteAudioCtx){
-        S.remoteAudioCtx=new (window.AudioContext||window.webkitAudioContext)();
+
+    h+=
+      `<div class="msg ${m.own?'own':''}">
+        <div class="mi">${m.av||'🐱'}</div>
+        <div>
+          <div class="ma">${esc(m.author||'')}</div>
+          ${body}
+          <div class="mtime">${esc(m.time||'')}</div>
+        </div>
+      </div>`;
+  });
+
+  $('#msgs').innerHTML=h;
+  $('#msgs').scrollTop=$('#msgs').scrollHeight;
+
+  $$('.dl').forEach(b=>{
+
+    b.onclick=()=>{
+
+      const a=
+        document.createElement('a');
+
+      a.href=
+        decodeURIComponent(
+          b.dataset.file
+        );
+
+      a.download=
+        decodeURIComponent(
+          b.dataset.name
+        );
+
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    };
+  });
+}
+
+function sendMsg(){
+
+  if(!S.active){
+    return;
+  }
+
+  const t=$('#mi')
+    .value
+    .trim();
+
+  if(!t)return;
+
+  if(
+    !S.socket||
+    !S.socket.connected
+  ){
+
+    toast(
+      '⚠️',
+      'مش متصل بالسيرفر'
+    );
+
+    return;
+  }
+
+  S.socket.emit(
+    'chat:message',
+    {
+      to:S.active,
+      message:t
+    }
+  );
+
+  $('#mi').value='';
+}
+
+function handleFile(inp){
+
+  if(
+    !S.active||
+    !inp.files?.[0]
+  ){
+    return;
+  }
+
+  if(
+    !S.socket||
+    !S.socket.connected
+  ){
+
+    toast(
+      '⚠️',
+      'مش متصل'
+    );
+
+    return;
+  }
+
+  const f=inp.files[0];
+
+  if(
+    f.size>
+    20*1024*1024
+  ){
+
+    toast(
+      '⚠️',
+      'أقصى حجم 20 ميجا'
+    );
+
+    inp.value='';
+    return;
+  }
+
+  const r=
+    new FileReader();
+
+  r.onload=()=>{
+
+    S.socket.emit(
+      'chat:file',
+      {
+        to:S.active,
+        name:f.name,
+        type:f.type,
+        data:r.result
       }
-      if(S.remoteAudioCtx.state==='suspended') S.remoteAudioCtx.resume();
-      if(!S._remoteAudioNodes) S._remoteAudioNodes={};
-      if(S._remoteAudioNodes[track.id]) return;
-      const src=S.remoteAudioCtx.createMediaStreamSource(new MediaStream([track]));
-      const g=S.remoteAudioCtx.createGain();
-      g.gain.value=S.deaf?0:1;
-      src.connect(g); g.connect(S.remoteAudioCtx.destination);
-      S._remoteAudioNodes[track.id]={src,g};
-      console.log('[remote]+ audio via AudioContext', track.id.slice(0,8));
-    }catch(e){ console.warn('remote audio ctx', e); }
-    remote.muted=!!S.deaf;
-    remote.volume=1;
-    remote.play().catch(()=>{});
+    );
+  };
+
+  r.readAsDataURL(f);
+
+  inp.value='';
+}
+
+function sendInvite(){
+
+  const n=
+    $('#iinput')
+      .value
+      .trim();
+
+  if(n.length<2)return;
+
+  if(
+    n.toLowerCase()===
+    S.nick.toLowerCase()
+  ){
+
+    toast(
+      '⚠️',
+      'مش هتدعو نفسك'
+    );
+
+    return;
+  }
+
+  if(
+    !S.socket||
+    !S.socket.connected
+  ){
+
+    toast(
+      '⚠️',
+      'مش متصل'
+    );
+
+    return;
+  }
+
+  S.socket.emit(
+    'invite:send',
+    {to:n}
+  );
+
+  $('#minv')
+    .classList
+    .add('h');
+}
+
+/* =========================================================
+   CALL UI
+========================================================= */
+
+function showCallUI(){
+
+  $('#callbar')
+    .classList
+    .add('on');
+
+  $('#cname').textContent=
+    'مع '+(S.callWith||'...');
+
+  $('#videofloat')
+    .classList
+    .add('on');
+
+  if(S.videoMode==='streamwatch'){
+    setVideoMode('normal');
+  }
+
+  $('#vtitle').textContent=
+    'مكالمة مع '+(S.callWith||'...');
+
+  $('#vstatus').textContent=
+    'جاري الاتصال...';
+
+  /*
+     KEEP CHAT ENABLED
+  */
+  $('#mi').disabled=false;
+  $('#bsend').disabled=false;
+
+  updateAllBtns();
+  updateScreenMuteBtn();
+}
+
+function hideCallUI(){
+
+  $('#callbar')
+    .classList
+    .remove('on');
+
+  $('#videofloat')
+    .classList
+    .remove(
+      'on',
+      'mini',
+      'expanded',
+      'streamwatch'
+    );
+
+  $('#watchStreamBtn')
+    .classList
+    .remove('on');
+
+  S.videoMode='normal';
+
+  updateScreenMuteBtn();
+}
+
+function showWatchBtn(show){
+
+  if(show){
+    $('#watchStreamBtn')
+      .classList
+      .add('on');
+  }else{
+    $('#watchStreamBtn')
+      .classList
+      .remove('on');
   }
 }
 
-function forceRemoteAudioPlay(){
-  try{
-    if(S.remoteAudioCtx && S.remoteAudioCtx.state==='suspended'){
-      S.remoteAudioCtx.resume().catch(()=>{});
-    }
-  }catch(e){}
+function setVideoMode(mode){
+
+  const box=$('#videofloat');
+
+  box.classList.remove(
+    'mini',
+    'expanded',
+    'streamwatch'
+  );
+
+  S.videoMode=mode;
+
+  if(mode==='mini'){
+    box.classList.add('mini');
+
+  }else if(mode==='expanded'){
+
+    box.classList.add('expanded');
+
+  }else if(mode==='streamwatch'){
+
+    box.classList.add('streamwatch');
+  }
+
+  $('#cmin').textContent=
+    mode==='mini'
+      ?'⬆️ تكبير'
+      :'⬇️ تصغير';
+
+  $('#cexpand').textContent=
+    mode==='streamwatch'
+      ?'⛶ خروج'
+      :mode==='expanded'
+        ?'⛶ أكبر'
+        :'⛶ تكبير';
+
+  $('#cwatch').textContent=
+    mode==='streamwatch'
+      ?'✕ خروج من الاستريم'
+      :'▶ مشاهدة الاستريم';
+
+  $('#vwatch').textContent=
+    mode==='streamwatch'
+      ?'✕ خروج'
+      :'▶ استريم';
+}
+
+async function enterStreamWatch(){
+
+  if(
+    !S.remoteScreenActive
+  ){
+
+    toast(
+      'ℹ️',
+      'مفيش استريم شغال'
+    );
+
+    return;
+  }
+
+  /*
+     IMPORTANT:
+     This is a PLAYER MODE, not the whole website.
+     Only the stream player is expanded.
+  */
+  setVideoMode('streamwatch');
+
+  $('#watchStreamBtn')
+    .classList
+    .remove('on');
+
   const remote=$('#remoteVideo');
-  if(remote){
-    remote.muted = !!S.deaf;
-    remote.volume = S.deaf ? 0 : 1;
-    const p = remote.play();
-    if(p && p.catch) p.catch(()=>{});
+
+  remote.muted=true;
+  remote.volume=1;
+
+  remote
+    .play()
+    .catch(()=>{});
+
+  /*
+     Try the actual video fullscreen first.
+     If browser refuses it, streamwatch CSS still gives a
+     full-player overlay that covers only the stream area.
+  */
+  try{
+
+    if(
+      !document.fullscreenElement&&
+      remote.requestFullscreen
+    ){
+
+      await remote.requestFullscreen();
+    }
+
+  }catch(e){
+
+    console.warn(
+      'video fullscreen',
+      e
+    );
   }
-  // فعّل كل تراكات الصوت المستقبلة
-  if(S.pc){
-    S.pc.getReceivers().forEach(r=>{
-      if(r.track && r.track.kind==='audio'){
-        r.track.enabled = !S.deaf;
-      }
-    });
+
+  updateScreenMuteBtn();
+
+  replayRemoteAudio();
+
+  toast(
+    '🖥️',
+    'دخلت مشاهدة الاستريم — Esc للخروج'
+  );
+}
+
+async function exitStreamWatch(){
+
+  try{
+
+    if(
+      document.fullscreenElement
+    ){
+
+      await document.exitFullscreen();
+    }
+
+  }catch(e){}
+
+  setVideoMode('normal');
+}
+
+/* =========================================================
+   CALL START / INCOMING
+========================================================= */
+
+async function startCall(){
+
+  if(
+    !S.active||
+    !S.socket||
+    !S.socket.connected
+  ){
+
+    toast('⚠️','مش متصل');
+    return;
   }
-  if(S._remoteAudioNodes){
-    Object.values(S._remoteAudioNodes).forEach(n=>{
-      if(n.g) n.g.gain.value = S.deaf ? 0 : 1;
-    });
+
+  if(
+    S.pc||
+    S.callWith
+  ){
+
+    toast(
+      '⚠️',
+      'أنت في مكالمة'
+    );
+
+    return;
+  }
+
+  S.callWith=S.active;
+
+  /*
+     Create media BEFORE asking the other side to accept.
+  */
+  const ok=
+    await preparePeer();
+
+  if(!ok){
+
+    S.callWith=null;
+    return;
+  }
+
+  S.socket.emit(
+    'call:invite',
+    {
+      to:S.callWith
+    }
+  );
+
+  showCallUI();
+
+  $('#vtitle').textContent=
+    'بتتصل بـ '+S.callWith+'...';
+
+  $('#vstatus').textContent=
+    'في انتظار الرد...';
+
+  toast(
+    '📞',
+    'بتتصل بـ '+S.callWith
+  );
+}
+
+function incomingCall(from){
+
+  const name=
+    (typeof from==='object'&&from?.n)
+      ?from.n
+      :from;
+
+  const av=
+    (typeof from==='object'&&from?.a)
+      ?from.a
+      :'📞';
+
+  if(
+    S.pc||
+    S.callWith
+  ){
+
+    if(S.socket){
+
+      S.socket.emit(
+        'call:reject',
+        {to:name}
+      );
+    }
+
+    return;
+  }
+
+  S.incomingFrom=name;
+
+  $('#incAv').textContent=av;
+  $('#incName').textContent=
+    name+' بيكلمك';
+
+  $('#incoming')
+    .classList
+    .add('on');
+}
+
+async function acceptIncoming(){
+
+  const from=S.incomingFrom;
+
+  if(!from){
+
+    $('#incoming')
+      .classList
+      .remove('on');
+
+    return;
+  }
+
+  $('#incoming')
+    .classList
+    .remove('on');
+
+  S.incomingFrom=null;
+  S.callWith=from;
+
+  /*
+     USER CLICK = audio activation point
+  */
+  await ensureRemoteAudioContext();
+
+  try{
+
+    const ok=
+      await preparePeer();
+
+    if(!ok){
+
+      throw new Error(
+        'prepare failed'
+      );
+    }
+
+    if(S.socket){
+
+      S.socket.emit(
+        'call:accept',
+        {
+          to:from
+        }
+      );
+    }
+
+    showCallUI();
+
+  }catch(e){
+
+    console.error(
+      'accept call',
+      e
+    );
+
+    toast(
+      '⚠️',
+      'فشل قبول المكالمة'
+    );
+
+    if(S.socket){
+
+      S.socket.emit(
+        'call:reject',
+        {to:from}
+      );
+    }
+
+    cleanupCall(false);
   }
 }
+
+/* =========================================================
+   WEBRTC
+========================================================= */
 
 async function preparePeer(){
-  if(S.pc) return S.pc;
-  S.pc=new RTCPeerConnection({
-    iceServers:[
-      {urls:'stun:stun.l.google.com:19302'},
-      {urls:'stun:stun1.l.google.com:19302'},
-      {urls:'stun:stun2.l.google.com:19302'}
-    ]
-  });
-  S.pc.onicecandidate=e=>{
-    if(e.candidate&&S.socket&&S.callWith)
-      S.socket.emit('call:ice',{to:S.callWith,candidate:e.candidate});
-  };
-  S.pc.ontrack=e=>{
-    console.log('[ontrack]', e.track.kind, e.track.readyState);
-    addRemoteTrack(e.track);
-    if(e.streams) e.streams.forEach(st=> st.getTracks().forEach(t=>addRemoteTrack(t)));
-    $('#vstatus').textContent='متصل ✓';
-    if(e.track.kind==='video'&&!S.sharing) showWatchBtn(true);
-  };
-  S.pc.onconnectionstatechange=()=>{
-    if(!S.pc) return;
-    const st=S.pc.connectionState;
-    if(st==='connected'){
-      $('#vstatus').textContent='متصل ✓';
-      $('#vtitle').textContent='مكالمة مع '+S.callWith;
-      toast('✅','المكالمة اتصلت');
-      // إجبار تشغيل الصوت عند الاتصال
-      forceRemoteAudioPlay();
-      // تأكد إن المايك الخارج شغال
-      if(S.pc){
-        S.pc.getSenders().forEach(s=>{
-          if(s.track && s.track.kind==='audio'){ s.track.enabled = !S.muted; }
-        });
-      }
-    }
-    if(st==='failed'){ toast('⚠️','فشل الاتصال'); cleanupCall(true); }
-    if(st==='disconnected') $('#vstatus').textContent='انقطع مؤقتاً...';
-    if(st==='closed') cleanupCall(false);
-  };
+
+  if(S.pc){
+    return true;
+  }
 
   try{
-    S.localStream=await navigator.mediaDevices.getUserMedia({
-      audio:{
-        echoCancellation:true,
-        noiseSuppression:true,
-        autoGainControl:true,
-        channelCount:1,
-        sampleRate:{ideal:48000}
-      },
-      video:{width:{ideal:640},height:{ideal:480},facingMode:'user'}
-    });
-  }catch(e){
-    try{
-      S.localStream=await navigator.mediaDevices.getUserMedia({
-        audio:{
-          echoCancellation:true,
-          noiseSuppression:true,
-          autoGainControl:true,
-          channelCount:1,
-          sampleRate:{ideal:48000}
-        },
-        video:false
+
+    await ensureRemoteAudioContext();
+
+    S.pc=
+      new RTCPeerConnection({
+        iceServers:[
+          {
+            urls:
+              'stun:stun.l.google.com:19302'
+          },
+          {
+            urls:
+              'stun:stun1.l.google.com:19302'
+          },
+          {
+            urls:
+              'stun:stun2.l.google.com:19302'
+          }
+        ]
       });
+
+    const pc=S.pc;
+
+    pc.onicecandidate=e=>{
+
+      if(
+        e.candidate&&
+        S.socket&&
+        S.callWith
+      ){
+
+        S.socket.emit(
+          'call:ice',
+          {
+            to:S.callWith,
+            candidate:e.candidate
+          }
+        );
+      }
+    };
+
+    pc.ontrack=e=>{
+
+      console.log(
+        '[WebRTC ontrack]',
+        e.track.kind,
+        e.track.id
+      );
+
+      addRemoteTrack(
+        e.track
+      );
+
+      $('#vstatus').textContent=
+        'متصل ✓';
+
+      if(
+        e.track.kind==='video'
+      ){
+
+        /*
+           Show the watch choice once actual
+           remote video exists.
+        */
+        if(
+          !S.sharing&&
+          S.remoteScreenActive
+        ){
+
+          showWatchBtn(true);
+        }
+      }
+    };
+
+    pc.onconnectionstatechange=()=>{
+
+      if(pc!==S.pc)return;
+
+      const st=
+        pc.connectionState;
+
+      console.log(
+        '[PC]',
+        st
+      );
+
+      if(st==='connected'){
+
+        $('#vstatus').textContent=
+          'متصل ✓';
+
+        $('#vtitle').textContent=
+          'مكالمة مع '+S.callWith;
+
+        toast(
+          '✅',
+          'المكالمة اتصلت — الشات شغال'
+        );
+
+        replayRemoteAudio();
+
+      }else if(st==='disconnected'){
+
+        $('#vstatus').textContent=
+          'انقطع مؤقتاً...';
+
+      }else if(st==='failed'){
+
+        $('#vstatus').textContent=
+          'فشل الاتصال';
+
+        toast(
+          '⚠️',
+          'اتصال المكالمة فشل'
+        );
+
+      }else if(st==='closed'){
+
+        cleanupCall(false);
+      }
+    };
+
+    /*
+       MIC
+    */
+    try{
+
+      S.localStream=
+        await navigator.mediaDevices.getUserMedia({
+          audio:{
+            echoCancellation:true,
+            noiseSuppression:true,
+            autoGainControl:true
+          },
+          video:{
+            width:{ideal:640},
+            height:{ideal:480},
+            facingMode:'user'
+          }
+        });
+
+    }catch(e){
+
+      console.warn(
+        'camera unavailable',
+        e
+      );
+
+      try{
+
+        S.localStream=
+          await navigator.mediaDevices.getUserMedia({
+            audio:{
+              echoCancellation:true,
+              noiseSuppression:true,
+              autoGainControl:true
+            },
+            video:false
+          });
+
+      }catch(err){
+
+        throw err;
+      }
+
       S.camOn=false;
-    }catch(err){
-      toast('⚠️','لازم توافق على المايك/الكاميرا'); cleanupCall(false); throw err;
+    }
+
+    /*
+       Start with microphone enabled.
+       Screen-share audio is a separate sender and is NOT muted
+       by the normal Mute button.
+    */
+    S.muted=false;
+
+    const mic=
+      S.localStream.getAudioTracks()[0];
+
+    if(!mic){
+      throw new Error(
+        'No microphone track'
+      );
+    }
+
+    mic.enabled=true;
+
+    pc.addTrack(
+      mic,
+      S.localStream
+    );
+
+    const cam=
+      S.localStream.getVideoTracks()[0];
+
+    if(cam){
+
+      cam.enabled=true;
+
+      pc.addTrack(
+        cam,
+        S.localStream
+      );
+
+      S.camOn=true;
+
+    }else{
+
+      S.camOn=false;
+    }
+
+    $('#localVideo')
+      .srcObject=S.localStream;
+
+    $('#localVideo').muted=true;
+
+    $('#localVideo')
+      .play()
+      .catch(()=>{});
+
+    updateAllBtns();
+
+    return true;
+
+  }catch(e){
+
+    console.error(
+      'preparePeer',
+      e
+    );
+
+    cleanupCall(false);
+
+    if(
+      e?.name==='NotAllowedError'
+    ){
+
+      toast(
+        '⚠️',
+        'اسمح للمايك من علامة القفل جنب رابط الموقع'
+      );
+
+    }else{
+
+      toast(
+        '⚠️',
+        'مش قادر أشغل المايك'
+      );
+    }
+
+    return false;
+  }
+}
+
+function routeRemoteAudioTrack(track,isScreen){
+
+  if(!track)return;
+
+  const targetId=
+    isScreen
+      ?'remoteScreenAudio'
+      :'remoteAudio';
+
+  const otherId=
+    isScreen
+      ?'remoteAudio'
+      :'remoteScreenAudio';
+
+  const target=$('#'+targetId);
+  const other=$('#'+otherId);
+
+  if(!target)return;
+
+  /*
+     Remove the same track from the other audio element
+     when the screen-start signal arrives after ontrack.
+  */
+  if(
+    other?.srcObject
+  ){
+
+    const otherTracks=
+      other.srcObject
+        .getAudioTracks?.()||[];
+
+    if(
+      otherTracks.some(
+        t=>t.id===track.id
+      )
+    ){
+
+      other.pause();
+      other.srcObject=null;
     }
   }
 
-  S.localStream.getTracks().forEach(t=>{ t.enabled=true; S.pc.addTrack(t, S.localStream); });
-  S.muted=false; S.deaf=false;
-  S.localStream.getAudioTracks().forEach(t=>t.enabled=true);
+  target.srcObject=
+    new MediaStream([track]);
 
-  $('#localVideo').srcObject=S.localStream;
-  $('#localVideo').muted=true;
-  $('#remoteVideo').muted=false;
-  $('#remoteVideo').volume=1;
-  $('#remoteVideo').srcObject=new MediaStream();
-  updateAllBtns();
-  return S.pc;
+  target.muted=
+    S.deaf||
+    (isScreen&&S.screenMuted);
+
+  target.volume=
+    S.deaf||
+    (isScreen&&S.screenMuted)
+      ?0
+      :1;
+
+  target.play().catch(()=>{
+    /*
+       autoplay can be retried by the global click handler.
+    */
+  });
 }
 
-async function renegotiate(){
-  if(!S.pc||!S.callWith||!S.socket) return;
-  try{
-    const offer=await S.pc.createOffer();
-    await S.pc.setLocalDescription(offer);
-    S.socket.emit('call:offer',{to:S.callWith,sdp:S.pc.localDescription});
-    console.log('[renegotiate] offer sent');
-  }catch(e){ console.warn('renegotiate failed', e); }
+function addRemoteTrack(track){
+
+  if(!track)return;
+
+  if(
+    track.kind==='video'
+  ){
+
+    const remote=
+      $('#remoteVideo');
+
+    if(!remote.srcObject){
+
+      remote.srcObject=
+        new MediaStream();
+    }
+
+    const stream=
+      remote.srcObject;
+
+    if(
+      !stream
+        .getTracks()
+        .some(
+          t=>t.id===track.id
+        )
+    ){
+
+      stream.addTrack(
+        track
+      );
+    }
+
+    /*
+       The video element is video-only.
+       All remote audio is handled by the two hidden
+       audio players so screen audio can be muted separately.
+    */
+    remote.muted=true;
+
+    remote
+      .play()
+      .catch(()=>{});
+
+    track.onended=()=>{
+
+      try{
+        stream.removeTrack(track);
+      }catch(e){}
+    };
+
+    return;
+  }
+
+  if(
+    track.kind!=='audio'
+  ){
+    return;
+  }
+
+  S.remoteAudioTracks[
+    track.id
+  ]=track;
+
+  /*
+     Decide routing:
+     - exact screen track ID from signaling
+     - pending screen audio for legacy signaling
+     - otherwise the first normal voice track
+  */
+  let isScreen=
+    S.remoteScreenAudioId===
+      track.id;
+
+  if(
+    !isScreen&&
+    S.remoteScreenAudioPending&&
+    track.id!==S.remoteVoiceAudioId
+  ){
+
+    isScreen=true;
+
+    S.remoteScreenAudioId=
+      track.id;
+
+    S.remoteScreenAudioPending=false;
+  }
+
+  if(
+    !isScreen&&
+    !S.remoteVoiceAudioId
+  ){
+
+    S.remoteVoiceAudioId=
+      track.id;
+  }
+
+  routeRemoteAudioTrack(
+    track,
+    isScreen
+  );
+
+  if(isScreen){
+
+    S.remoteScreenHasAudio=true;
+    updateScreenMuteBtn();
+  }
+
+  track.onended=()=>{
+
+    delete S.remoteAudioTracks[
+      track.id
+    ];
+
+    if(
+      S.remoteVoiceAudioId===
+      track.id
+    ){
+
+      S.remoteVoiceAudioId=null;
+
+      const voice=$(
+        '#remoteAudio'
+      );
+
+      if(
+        voice?.srcObject?.getAudioTracks?.()
+          .some(t=>t.id===track.id)
+      ){
+
+        voice.pause();
+        voice.srcObject=null;
+      }
+    }
+
+    if(
+      S.remoteScreenAudioId===
+      track.id
+    ){
+
+      S.remoteScreenAudioId=null;
+
+      const screen=$(
+        '#remoteScreenAudio'
+      );
+
+      if(screen){
+
+        screen.pause();
+        screen.srcObject=null;
+      }
+    }
+
+    updateScreenMuteBtn();
+  };
 }
+
+/* =========================================================
+   OFFER / ANSWER
+========================================================= */
 
 async function makeOffer(){
-  if(S.makingOffer) return; S.makingOffer=true;
+
+  if(
+    S.makingOffer||
+    !S.pc||
+    !S.callWith||
+    !S.socket
+  ){
+
+    return;
+  }
+
+  S.makingOffer=true;
+
   try{
-    await preparePeer(); if(!S.pc) return;
-    const offer=await S.pc.createOffer({offerToReceiveAudio:true,offerToReceiveVideo:true});
-    await S.pc.setLocalDescription(offer);
-    if(S.socket&&S.callWith) S.socket.emit('call:offer',{to:S.callWith,sdp:S.pc.localDescription});
-  }catch(e){ console.error(e); toast('⚠️','فشل إنشاء المكالمة'); }
-  finally{ S.makingOffer=false; }
+
+    const offer=
+      await S.pc.createOffer({
+        offerToReceiveAudio:true,
+        offerToReceiveVideo:true
+      });
+
+    await S.pc.setLocalDescription(
+      offer
+    );
+
+    S.socket.emit(
+      'call:offer',
+      {
+        to:S.callWith,
+        sdp:S.pc.localDescription
+      }
+    );
+
+  }catch(e){
+
+    console.error(
+      'makeOffer',
+      e
+    );
+
+    toast(
+      '⚠️',
+      'فشل إنشاء اتصال المكالمة'
+    );
+
+  }finally{
+
+    S.makingOffer=false;
+  }
 }
 
 async function handleOffer(x){
+
+  if(
+    !x?.sdp||
+    !x?.from
+  ){
+
+    return;
+  }
+
   try{
-    const isRenegotiation=!!S.pc && S.callWith===x.from;
+
+    const isRenegotiation=
+      !!S.pc&&
+      S.callWith===x.from;
+
     if(!S.pc){
+
       S.callWith=x.from;
-      await preparePeer();
+
+      const ok=
+        await preparePeer();
+
+      if(!ok)return;
+
     }else if(!S.callWith){
+
       S.callWith=x.from;
     }
-    if(!S.pc) return;
 
-    // دعم إعادة التفاوض أثناء المكالمة (لما الشير يتغير)
-    if(S.pc.signalingState==='have-local-offer'){
-      try{ await S.pc.setLocalDescription({type:'rollback'}); }catch(e){}
+    if(!S.pc)return;
+
+    /*
+       Screen-share start/stop adds/removes transceivers.
+       Allow safe rollback if the other side sends an offer
+       while we are holding a local offer.
+    */
+    if(
+      S.pc.signalingState===
+      'have-local-offer'
+    ){
+
+      try{
+
+        await S.pc.setLocalDescription({
+          type:'rollback'
+        });
+
+      }catch(e){}
     }
-    await S.pc.setRemoteDescription(x.sdp);
-    const answer=await S.pc.createAnswer();
-    await S.pc.setLocalDescription(answer);
-    if(S.socket) S.socket.emit('call:answer',{to:S.callWith||x.from,sdp:S.pc.localDescription});
-    if(!isRenegotiation) showCallUI();
-  }catch(e){ console.error('handleOffer',e); if(!S.pc) { toast('⚠️','فشل استقبال المكالمة'); cleanupCall(false); } }
-}
 
-function cleanupCall(notify){
-  if(notify&&S.callWith&&S.socket&&S.socket.connected){ try{ S.socket.emit('call:hangup',{to:S.callWith}); }catch(e){} }
-  if(S.screenStream){ S.screenStream.getTracks().forEach(t=>{try{t.stop()}catch(e){}}); S.screenStream=null; }
-  if(S.mixedAudioTrack){ try{S.mixedAudioTrack.stop()}catch(e){} S.mixedAudioTrack=null; }
-  if(S.audioCtx){ try{S.audioCtx.close()}catch(e){} S.audioCtx=null; }
-  if(S.localStream){ S.localStream.getTracks().forEach(t=>{try{t.stop()}catch(e){}}); S.localStream=null; }
-  if(S.pc){ try{S.pc.close()}catch(e){} S.pc=null; }
-  if(S._remoteAudioNodes){ S._remoteAudioNodes={}; }
-  if(S.remoteAudioCtx){ try{S.remoteAudioCtx.close()}catch(e){} S.remoteAudioCtx=null; }
-  $('#localVideo').srcObject=null; $('#remoteVideo').srcObject=null;
-  hideCallUI();
-  S.callWith=null; S.incomingFrom=null; S.muted=false; S.deaf=false; S.camOn=true; S.sharing=false; S.makingOffer=false;
-  $('#incoming').classList.remove('on');
-}
+    await S.pc.setRemoteDescription(
+      x.sdp
+    );
 
-function updateAllBtns(){ updateMuteBtn(); updateDeafBtn(); updateCamBtn(); updateStreamBtn(); updateNoiseBtn(); }
-function updateMuteBtn(){
-  const btn=$('#cmute');
-  if(S.muted){ btn.textContent='🎤 مايك: Off'; btn.classList.add('off'); btn.classList.remove('on-state'); }
-  else{ btn.textContent='🎤 مايك: On'; btn.classList.remove('off'); btn.classList.add('on-state'); }
-}
-function updateDeafBtn(){
-  const btn=$('#cdeaf');
-  if(S.deaf){ btn.textContent='🔇 ديفن: On'; btn.classList.add('off'); btn.classList.remove('on-state'); }
-  else{ btn.textContent='🔊 ديفن: Off'; btn.classList.remove('off'); btn.classList.add('on-state'); }
-}
-function updateCamBtn(){
-  const btn=$('#ccam');
-  if(S.camOn){ btn.textContent='📷 كاميرا: On'; btn.classList.remove('off'); btn.classList.add('on-state'); }
-  else{ btn.textContent='📷 كاميرا: Off'; btn.classList.add('off'); btn.classList.remove('on-state'); }
-}
-function updateStreamBtn(){
-  const btn=$('#cstream');
-  if(S.sharing){ btn.textContent='🛑 وقف الشير'; btn.classList.add('stream-on'); }
-  else{ btn.textContent='🖥️ شير سكرين'; btn.classList.remove('stream-on'); }
-}
+    const answer=
+      await S.pc.createAnswer({
+        offerToReceiveAudio:true,
+        offerToReceiveVideo:true
+      });
 
-function updateNoiseBtn(){
-  const btn=$('#cnoise');
-  if(!btn) return;
-  if(S.noiseOn){ btn.textContent='🧹 تصفية الضوضاء: On'; btn.classList.add('on-state'); btn.classList.remove('off'); }
-  else{ btn.textContent='🧹 تصفية الضوضاء: Off'; btn.classList.remove('on-state'); btn.classList.add('off'); }
-}
+    await S.pc.setLocalDescription(
+      answer
+    );
 
-async function toggleNoise(){
-  S.noiseOn = !S.noiseOn;
-  const tracks = [];
-  if(S.localStream) tracks.push(...S.localStream.getAudioTracks());
-  // apply on peer senders too
-  if(S.pc){
-    S.pc.getSenders().forEach(s=>{
-      if(s.track && s.track.kind==='audio' && s.track !== S.mixedAudioTrack) tracks.push(s.track);
-    });
-  }
-  const constraints = {
-    echoCancellation: true,
-    noiseSuppression: S.noiseOn,
-    autoGainControl: true,
-    channelCount: 1
-  };
-  for(const t of tracks){
-    try{
-      await t.applyConstraints(constraints);
-      console.log('[noise] applied', S.noiseOn, t.id.slice(0,8));
-    }catch(e){ console.warn('applyConstraints', e); }
-  }
-  updateNoiseBtn();
-  toast(S.noiseOn?'🧹':'🎙️', S.noiseOn?'تصفية الضوضاء اشتغلت':'تصفية الضوضاء اتقفلت');
-}
+    if(S.socket){
 
-function toggleMute(){
-  if(!S.localStream && !S.pc) return;
-  S.muted=!S.muted;
-  if(S.pc) S.pc.getSenders().forEach(s=>{ if(s.track&&s.track.kind==='audio') s.track.enabled=!S.muted; });
-  if(S.localStream) S.localStream.getAudioTracks().forEach(t=>t.enabled=!S.muted);
-  if(S.screenStream) S.screenStream.getAudioTracks().forEach(t=>t.enabled=!S.muted);
-  if(S.mixedAudioTrack) S.mixedAudioTrack.enabled=!S.muted;
-  updateMuteBtn();
-  toast(S.muted?'🔇':'🎤', S.muted?'المايك اتقفل':'المايك اشتغل');
-}
-function toggleDeaf(){
-  S.deaf=!S.deaf;
-  const remote=$('#remoteVideo');
-  if(remote){ remote.muted=S.deaf; remote.volume=S.deaf?0:1; }
-  if(S.pc) S.pc.getReceivers().forEach(r=>{ if(r.track&&r.track.kind==='audio') r.track.enabled=!S.deaf; });
-  if(S._remoteAudioNodes){
-    Object.values(S._remoteAudioNodes).forEach(n=>{ if(n.g) n.g.gain.value=S.deaf?0:1; });
-  }
-  updateDeafBtn();
-  toast(S.deaf?'🔇':'🔊', S.deaf?'الديفن شغال':'الديفن اتقفل');
-}
-function toggleCam(){
-  if(!S.localStream) return;
-  const vids=S.localStream.getVideoTracks();
-  if(!vids.length){ toast('⚠️','مفيش كاميرا'); return; }
-  if(S.sharing){ toast('ℹ️','وقف الشير الأول'); return; }
-  S.camOn=!S.camOn; vids.forEach(t=>t.enabled=S.camOn);
-  updateCamBtn();
-  toast(S.camOn?'📷':'🚫', S.camOn?'الكاميرا اشتغلت':'الكاميرا اتقفلت');
-}
-
-async function createMixedAudio(micTrack, systemTrack){
-  try{
-    if(S.audioCtx){ try{ await S.audioCtx.close(); }catch(e){} }
-    S.audioCtx=new (window.AudioContext||window.webkitAudioContext)();
-    if(S.audioCtx.state==='suspended') await S.audioCtx.resume();
-    const dest=S.audioCtx.createMediaStreamDestination();
-    if(micTrack && micTrack.readyState==='live'){
-      const src=S.audioCtx.createMediaStreamSource(new MediaStream([micTrack]));
-      const g=S.audioCtx.createGain(); g.gain.value=1;
-      src.connect(g); g.connect(dest);
+      S.socket.emit(
+        'call:answer',
+        {
+          to:S.callWith||x.from,
+          sdp:S.pc.localDescription
+        }
+      );
     }
-    if(systemTrack && systemTrack.readyState==='live'){
-      const src=S.audioCtx.createMediaStreamSource(new MediaStream([systemTrack]));
-      const g=S.audioCtx.createGain(); g.gain.value=1.2;
-      src.connect(g); g.connect(dest);
+
+    if(!isRenegotiation){
+
+      showCallUI();
     }
-    const mixed=dest.stream.getAudioTracks()[0];
-    if(mixed){ mixed.enabled=!S.muted; }
-    return mixed||systemTrack||micTrack||null;
+
+    replayRemoteAudio();
+
   }catch(e){
-    console.warn('mix fail', e);
-    return systemTrack||micTrack||null;
+
+    console.error(
+      'handleOffer',
+      e
+    );
+
+    if(!S.pc){
+
+      toast(
+        '⚠️',
+        'فشل استقبال المكالمة'
+      );
+
+      cleanupCall(false);
+    }
   }
 }
+
+/* =========================================================
+   SCREEN SHARE SENDER
+========================================================= */
 
 async function toggleShare(){
-  if(!S.pc) return;
-  if(S.sharing&&S.screenStream){ await stopShare(); return; }
+
+  if(!S.pc){
+
+    toast(
+      '⚠️',
+      'ابدأ المكالمة الأول'
+    );
+
+    return;
+  }
+
+  if(
+    S.sharing&&
+    S.screenStream
+  ){
+
+    await stopShare();
+    return;
+  }
 
   try{
-    S.screenStream=await navigator.mediaDevices.getDisplayMedia({
-      video:{cursor:'always'},
-      audio:true
-    });
 
-    const screenVideo=S.screenStream.getVideoTracks()[0];
-    if(!screenVideo) throw new Error('no video');
+    /*
+       Chrome/Edge can offer audio when the selected surface
+       supports it. The user still has to choose a source that
+       provides audio (for example a browser tab with tab audio).
+    */
+    S.screenStream=
+      await navigator.mediaDevices.getDisplayMedia({
 
-    // 1) فيديو الشاشة
-    const videoSender=S.pc.getSenders().find(s=>s.track&&s.track.kind==='video');
-    if(videoSender) await videoSender.replaceTrack(screenVideo);
-    else S.pc.addTrack(screenVideo, S.screenStream);
+        video:{
+          cursor:'always',
+          frameRate:{
+            ideal:30,
+            max:60
+          }
+        },
 
-    // 2) صوت النظام — نبعت التراك مباشرة (من غير دمج)
-    const systemAudio=S.screenStream.getAudioTracks()[0]||null;
-    S._screenAudioSender=null;
+        audio:true,
 
-    if(systemAudio){
-      systemAudio.enabled=true;
+        preferCurrentTab:false,
+        selfBrowserSurface:'exclude',
+        surfaceSwitching:'include',
+        systemAudio:'include',
+        windowAudio:'system'
+      });
 
-      // فعّل التراك محلياً عشان بعض المتصفحات ماتبعتهوش صامت
-      try{
-        const silent=document.createElement('audio');
-        silent.muted=true;
-        silent.autoplay=true;
-        silent.srcObject=new MediaStream([systemAudio.clone ? systemAudio.clone() : systemAudio]);
-        silent.play().catch(()=>{});
-        S._silentAudioEl=silent;
-      }catch(e){}
+    const screenVideo=
+      S.screenStream
+        .getVideoTracks()[0];
 
-      // ابعت صوت النظام كتراك إضافي — المايك يفضل على التراك الأصلي
-      try{
-        S._screenAudioSender=S.pc.addTrack(systemAudio, S.screenStream);
-        console.log('[share] system audio addTrack OK', systemAudio.id, systemAudio.enabled, systemAudio.readyState);
-      }catch(e1){
-        console.warn('addTrack system audio failed, try replaceTrack', e1);
-        const audioSender=S.pc.getSenders().find(s=>s.track&&s.track.kind==='audio');
-        if(audioSender){
-          // احتياطي: استبدل المايك مؤقتاً بصوت النظام
-          S._prevMicTrack=audioSender.track;
-          await audioSender.replaceTrack(systemAudio);
-          console.log('[share] system audio replaceTrack OK');
-        }
-      }
-      toast('🔊','صوت الاستريم شغال ✓');
-    }else{
-      toast('⚠️','كروم مدّاش تراك صوت. جرّب: Chrome Tab + Share tab audio');
-      console.warn('[share] no audio track. tracks=', S.screenStream.getTracks().map(t=>t.kind+':'+t.label));
+    if(!screenVideo){
+
+      throw new Error(
+        'No screen video track'
+      );
     }
 
-    // 3) إعادة تفاوض إلزامي
+    /*
+       VIDEO sender:
+       replace camera with screen.
+    */
+    const videoSender=
+      S.pc
+        .getSenders()
+        .find(
+          s=>s.track?.kind==='video'
+        );
+
+    if(videoSender){
+
+      await videoSender.replaceTrack(
+        screenVideo
+      );
+    }else{
+
+      S.pc.addTrack(
+        screenVideo,
+        S.screenStream
+      );
+    }
+
+    /*
+       SCREEN AUDIO:
+       Use a dedicated AUDIO transceiver so it stays separate
+       from the microphone. This is essential for MUTE SCREEN.
+    */
+    const systemAudio=
+      S.screenStream
+        .getAudioTracks?.()[0]||
+      null;
+
+    S.screenAudioTrackId=
+      systemAudio?.id||
+      null;
+
+    if(systemAudio){
+
+      systemAudio.enabled=true;
+
+      if(!S.screenAudioTransceiver){
+
+        S.screenAudioTransceiver=
+          S.pc.addTransceiver(
+            'audio',
+            {
+              direction:'sendonly'
+            }
+          );
+      }
+
+      S.screenAudioTransceiver.direction=
+        'sendonly';
+
+      S.screenAudioSender=
+        S.screenAudioTransceiver.sender;
+
+      await S.screenAudioSender.replaceTrack(
+        systemAudio
+      );
+
+      console.log(
+        '[share audio]',
+        systemAudio.id,
+        systemAudio.label
+      );
+
+      toast(
+        '🔊',
+        'صوت الاستريم موجود'
+      );
+
+    }else{
+
+      /*
+         No audio track was returned by the browser.
+         Do NOT replace the microphone.
+      */
+      if(
+        S.screenAudioTransceiver
+      ){
+
+        await S.screenAudioSender
+          ?.replaceTrack(null);
+
+        S.screenAudioTransceiver.direction=
+          'inactive';
+      }
+
+      toast(
+        '⚠️',
+        'المتصفح لم يرجّع صوت للمصدر المختار'
+      );
+    }
+
+    /*
+       Send the screen state BEFORE renegotiation so the viewer
+       can prepare the watch UI and MUTE SCREEN state.
+    */
+    if(
+      S.socket&&
+      S.callWith
+    ){
+
+      const payload={
+        to:S.callWith,
+        on:true,
+        hasAudio:!!systemAudio,
+        audioTrackId:
+          systemAudio?.id||null
+      };
+
+      /*
+         Current server:
+      */
+      S.socket.emit(
+        'call:screen-start',
+        payload
+      );
+
+      /*
+         Legacy compatibility:
+      */
+      S.socket.emit(
+        'call:screenshare',
+        payload
+      );
+    }
+
+    S.sharing=true;
+
+    /*
+       Keep the stream as a PLAYER, not full-page.
+    */
+    setVideoMode('normal');
+
+    $('#localVideo')
+      .srcObject=
+      S.screenStream;
+
+    $('#localVideo').muted=true;
+
+    $('#localVideo')
+      .play()
+      .catch(()=>{});
+
+    updateStreamBtn();
+
+    /*
+       Renegotiate now so the remote side actually receives
+       the new video/audio sender.
+    */
     await renegotiate();
 
-    $('#localVideo').srcObject=S.screenStream;
-    S.sharing=true; updateStreamBtn(); setVideoMode('expanded');
-    if(S.socket&&S.callWith) S.socket.emit('call:screenshare',{to:S.callWith,on:true});
-    toast('🖥️','شير سكرين اشتغل');
+    toast(
+      '🖥️',
+      'شير سكرين اشتغل'
+    );
 
-    screenVideo.onended=()=>stopShare();
+    screenVideo.onended=()=>{
+
+      stopShare()
+        .catch(()=>{});
+    };
+
   }catch(e){
-    console.warn(e);
-    toast('⚠️','الشير اتلغى أو المتصفح رفض');
-    S.sharing=false; updateStreamBtn();
+
+    console.error(
+      'toggleShare',
+      e
+    );
+
+    /*
+       If permission was cancelled, this is expected.
+    */
+    S.sharing=false;
+
+    if(S.screenStream){
+
+      S.screenStream
+        .getTracks()
+        .forEach(
+          t=>{
+            try{t.stop()}catch(_){}
+          }
+        );
+
+      S.screenStream=null;
+    }
+
+    updateStreamBtn();
+
+    toast(
+      '⚠️',
+      e?.name==='NotAllowedError'
+        ?'اختار الشاشة واسمح بالشير'
+        :'الشير فشل'
+    );
   }
 }
 
 async function stopShare(){
-  if(!S.screenStream) return;
 
-  // شيل تراك صوت الشاشة من الـ PC
-  if(S._screenAudioSender && S.pc){
-    try{ S.pc.removeTrack(S._screenAudioSender); }catch(e){}
-    S._screenAudioSender=null;
-  }
-  if(S._silentAudioEl){
-    try{ S._silentAudioEl.pause(); S._silentAudioEl.srcObject=null; }catch(e){}
-    S._silentAudioEl=null;
+  if(!S.screenStream){
+
+    return;
   }
 
-  S.screenStream.getTracks().forEach(t=>{try{t.stop()}catch(e){}});
-  S.screenStream=null; S.sharing=false;
+  const stoppedAudioId=
+    S.screenAudioTrackId;
 
-  const camTrack=S.localStream?.getVideoTracks()[0];
-  const videoSender=S.pc?.getSenders().find(s=>s.track&&s.track.kind==='video');
-  if(videoSender&&camTrack) try{ await videoSender.replaceTrack(camTrack); }catch(e){}
+  /*
+     Notify viewer immediately.
+  */
+  if(
+    S.socket&&
+    S.callWith
+  ){
 
-  // رجّع المايك لو كنا استبدلناه
-  const micTrack=S._prevMicTrack || S.localStream?.getAudioTracks()[0];
-  S._prevMicTrack=null;
-  const audioSender=S.pc?.getSenders().find(s=>s.track&&s.track.kind==='audio');
-  if(audioSender&&micTrack) try{ await audioSender.replaceTrack(micTrack); }catch(e){}
+    const payload={
+      to:S.callWith,
+      on:false,
+      hasAudio:false,
+      audioTrackId:
+        stoppedAudioId||null
+    };
 
-  if(S.mixedAudioTrack){ try{S.mixedAudioTrack.stop()}catch(e){} S.mixedAudioTrack=null; }
-  if(S.audioCtx){ try{S.audioCtx.close()}catch(e){} S.audioCtx=null; }
+    S.socket.emit(
+      'call:screen-stop',
+      payload
+    );
 
-  if(S.localStream) $('#localVideo').srcObject=S.localStream;
+    S.socket.emit(
+      'call:screenshare',
+      payload
+    );
+  }
+
+  /*
+     Stop screen audio transceiver.
+  */
+  if(
+    S.screenAudioSender
+  ){
+
+    try{
+      await S.screenAudioSender
+        .replaceTrack(null);
+    }catch(e){}
+  }
+
+  if(
+    S.screenAudioTransceiver
+  ){
+
+    try{
+      S.screenAudioTransceiver.direction=
+        'inactive';
+    }catch(e){}
+  }
+
+  S.screenAudioSender=null;
+  S.screenAudioTrackId=null;
+
+  /*
+     Restore camera.
+  */
+  const camTrack=
+    S.localStream
+      ?.getVideoTracks?.()[0]||
+    null;
+
+  const videoSender=
+    S.pc
+      ?.getSenders?.()
+      .find(
+        x=>x.track?.kind==='video'
+      );
+
+  if(
+    videoSender&&
+    camTrack
+  ){
+
+    try{
+
+      await videoSender.replaceTrack(
+        camTrack
+      );
+
+    }catch(e){}
+  }
+
+  if(
+    S.screenStream
+  ){
+
+    S.screenStream
+      .getTracks()
+      .forEach(
+        t=>{
+          try{t.stop()}catch(_){}
+        }
+      );
+  }
+
+  S.screenStream=null;
+  S.sharing=false;
+
+  if(S.localStream){
+
+    $('#localVideo')
+      .srcObject=
+      S.localStream;
+
+    $('#localVideo').muted=true;
+
+    $('#localVideo')
+      .play()
+      .catch(()=>{});
+  }
+
   updateStreamBtn();
-  if(S.videoMode==='streamwatch'||S.videoMode==='expanded') setVideoMode('normal');
-  if(S.socket&&S.callWith) S.socket.emit('call:screenshare',{to:S.callWith,on:false});
 
+  if(
+    S.videoMode==='streamwatch'||
+    S.videoMode==='expanded'
+  ){
+
+    setVideoMode('normal');
+  }
+
+  /*
+     Renegotiate to remove the screen audio/video sender.
+  */
   await renegotiate();
-  toast('🛑','الشير توقف');
+
+  toast(
+    '🛑',
+    'الشير توقف'
+  );
 }
+
+async function renegotiate(){
+
+  if(
+    !S.pc||
+    !S.callWith||
+    !S.socket
+  ){
+
+    return;
+  }
+
+  if(S.makingOffer){
+    return;
+  }
+
+  S.makingOffer=true;
+
+  try{
+
+    const offer=
+      await S.pc.createOffer({
+        offerToReceiveAudio:true,
+        offerToReceiveVideo:true
+      });
+
+    await S.pc.setLocalDescription(
+      offer
+    );
+
+    S.socket.emit(
+      'call:offer',
+      {
+        to:S.callWith,
+        sdp:S.pc.localDescription
+      }
+    );
+
+  }catch(e){
+
+    console.warn(
+      'renegotiate',
+      e
+    );
+
+  }finally{
+
+    S.makingOffer=false;
+  }
+}
+
+/* =========================================================
+   CALL CONTROLS
+========================================================= */
+
+function updateAllBtns(){
+
+  updateMuteBtn();
+  updateDeafBtn();
+  updateCamBtn();
+  updateStreamBtn();
+  updateScreenMuteBtn();
+}
+
+function updateMuteBtn(){
+
+  const btn=$('#cmute');
+
+  if(!btn)return;
+
+  if(S.muted){
+
+    btn.textContent=
+      '🎤 مايك: Off';
+
+    btn.classList.add('off');
+    btn.classList.remove(
+      'on-state'
+    );
+
+  }else{
+
+    btn.textContent=
+      '🎤 مايك: On';
+
+    btn.classList.remove('off');
+    btn.classList.add(
+      'on-state'
+    );
+  }
+}
+
+function updateDeafBtn(){
+
+  const btn=$('#cdeaf');
+
+  if(!btn)return;
+
+  if(S.deaf){
+
+    btn.textContent=
+      '🔇 ديفن: On';
+
+    btn.classList.add('off');
+    btn.classList.remove(
+      'on-state'
+    );
+
+  }else{
+
+    btn.textContent=
+      '🔊 ديفن: Off';
+
+    btn.classList.remove('off');
+    btn.classList.add(
+      'on-state'
+    );
+  }
+}
+
+function updateCamBtn(){
+
+  const btn=$('#ccam');
+
+  if(!btn)return;
+
+  if(S.camOn){
+
+    btn.textContent=
+      '📷 كاميرا: On';
+
+    btn.classList.remove('off');
+    btn.classList.add(
+      'on-state'
+    );
+
+  }else{
+
+    btn.textContent=
+      '📷 كاميرا: Off';
+
+    btn.classList.add('off');
+    btn.classList.remove(
+      'on-state'
+    );
+  }
+}
+
+function updateStreamBtn(){
+
+  const btn=$('#cstream');
+
+  if(!btn)return;
+
+  if(S.sharing){
+
+    btn.textContent=
+      '🛑 وقف الشير';
+
+    btn.classList.add(
+      'stream-on'
+    );
+
+  }else{
+
+    btn.textContent=
+      '🖥️ شير سكرين';
+
+    btn.classList.remove(
+      'stream-on'
+    );
+  }
+}
+
+function toggleMute(){
+
+  const mic=
+    S.localStream
+      ?.getAudioTracks?.()[0];
+
+  if(!mic){
+
+    toast(
+      '⚠️',
+      'مفيش مايك'
+    );
+
+    return;
+  }
+
+  S.muted=
+    !S.muted;
+
+  /*
+     ONLY microphone.
+     Screen-share audio stays independent.
+  */
+  mic.enabled=
+    !S.muted;
+
+  updateMuteBtn();
+
+  toast(
+    S.muted
+      ?'🔇'
+      :'🎤',
+    S.muted
+      ?'المايك اتقفل'
+      :'المايك اشتغل'
+  );
+}
+
+function toggleDeaf(){
+
+  S.deaf=
+    !S.deaf;
+
+  const voice=$(
+    '#remoteAudio'
+  );
+
+  const screen=$(
+    '#remoteScreenAudio'
+  );
+
+  if(voice){
+
+    voice.muted=
+      S.deaf;
+
+    voice.volume=
+      S.deaf
+        ?0
+        :1;
+  }
+
+  if(screen){
+
+    screen.muted=
+      S.deaf||
+      S.screenMuted;
+
+    screen.volume=
+      S.deaf||
+      S.screenMuted
+        ?0
+        :1;
+  }
+
+  updateDeafBtn();
+
+  toast(
+    S.deaf?'🔇':'🔊',
+    S.deaf
+      ?'الديفن: On'
+      :'الديفن: Off'
+  );
+}
+
+function toggleCam(){
+
+  if(!S.localStream)return;
+
+  const vids=
+    S.localStream
+      .getVideoTracks();
+
+  if(!vids.length){
+
+    toast(
+      '⚠️',
+      'مفيش كاميرا'
+    );
+
+    return;
+  }
+
+  if(S.sharing){
+
+    toast(
+      'ℹ️',
+      'وقف الشير الأول'
+    );
+
+    return;
+  }
+
+  S.camOn=!S.camOn;
+
+  vids.forEach(
+    t=>{
+      t.enabled=S.camOn;
+    }
+  );
+
+  updateCamBtn();
+
+  toast(
+    S.camOn?'📷':'🚫',
+    S.camOn
+      ?'الكاميرا اشتغلت'
+      :'الكاميرا اتقفلت'
+  );
+}
+
+/* =========================================================
+   MINI / EXIT
+========================================================= */
 
 function cycleExpand(){
-  if(S.videoMode==='streamwatch'){ exitStreamWatch(); return; }
-  if(S.videoMode==='normal') setVideoMode('expanded');
-  else if(S.videoMode==='expanded') setVideoMode('streamwatch');
-  else setVideoMode('normal');
+
+  if(
+    S.videoMode==='streamwatch'
+  ){
+
+    exitStreamWatch();
+    return;
+  }
+
+  if(
+    S.videoMode==='normal'
+  ){
+
+    setVideoMode(
+      'expanded'
+    );
+
+  }else if(
+    S.videoMode==='expanded'
+  ){
+
+    setVideoMode(
+      'streamwatch'
+    );
+
+  }else{
+
+    setVideoMode(
+      'normal'
+    );
+  }
 }
-function toggleMini(){ if(S.videoMode==='mini') setVideoMode('normal'); else setVideoMode('mini'); }
-function toggleWatch(){ if(S.videoMode==='streamwatch') exitStreamWatch(); else enterStreamWatch(); }
+
+function toggleMini(){
+
+  if(
+    S.videoMode==='mini'
+  ){
+
+    setVideoMode(
+      'normal'
+    );
+
+  }else{
+
+    setVideoMode(
+      'mini'
+    );
+  }
+}
+
+function toggleWatch(){
+
+  if(
+    !S.remoteScreenActive
+  ){
+
+    toast(
+      'ℹ️',
+      'مفيش استريم شغال'
+    );
+
+    return;
+  }
+
+  if(
+    S.videoMode==='streamwatch'
+  ){
+
+    exitStreamWatch();
+
+  }else{
+
+    enterStreamWatch();
+  }
+}
+
+/* =========================================================
+   LEAVE / CLEANUP
+========================================================= */
+
+function cleanupCall(notify){
+
+  const peer=
+    S.callWith;
+
+  if(
+    notify&&
+    peer&&
+    S.socket?.connected
+  ){
+
+    try{
+
+      S.socket.emit(
+        'call:hangup',
+        {to:peer}
+      );
+
+    }catch(e){}
+  }
+
+  if(S.screenStream){
+
+    S.screenStream
+      .getTracks()
+      .forEach(
+        t=>{
+          try{t.stop()}catch(_){}
+        }
+      );
+
+    S.screenStream=null;
+  }
+
+  if(
+    S.screenAudioSender
+  ){
+
+    try{
+      S.screenAudioSender
+        .replaceTrack(null);
+    }catch(e){}
+  }
+
+  if(
+    S.pc
+  ){
+
+    try{
+
+      S.pc.close();
+
+    }catch(e){}
+  }
+
+  S.pc=null;
+  S.callWith=null;
+  S.incomingFrom=null;
+
+  S.screenAudioSender=null;
+  S.screenAudioTrackId=null;
+  S.screenAudioTransceiver=null;
+
+  if(S.localStream){
+
+    S.localStream
+      .getTracks()
+      .forEach(
+        t=>{
+          try{t.stop()}catch(_){}
+        }
+      );
+
+    S.localStream=null;
+  }
+
+  $('#localVideo').srcObject=null;
+  $('#remoteVideo').srcObject=null;
+
+  ['#remoteAudio','#remoteScreenAudio'].forEach(sel=>{
+
+    const a=$(sel);
+
+    if(a){
+
+      a.pause();
+      a.srcObject=null;
+    }
+  });
+
+  if(S.remoteAudioTracks){
+    S.remoteAudioTracks={};
+  }
+
+  if(S.remoteAudioCtx){
+
+    try{
+      S.remoteAudioCtx.close();
+    }catch(e){}
+
+    S.remoteAudioCtx=null;
+  }
+
+  S.remoteVoiceAudioId=null;
+  S.remoteScreenAudioId=null;
+  S.remoteScreenActive=false;
+  S.remoteScreenHasAudio=false;
+  S.remoteScreenAudioPending=false;
+  S.screenMuted=false;
+
+  S.muted=false;
+  S.deaf=false;
+  S.camOn=true;
+  S.sharing=false;
+  S.makingOffer=false;
+
+  if(
+    document.fullscreenElement
+  ){
+
+    document
+      .exitFullscreen?.()
+      .catch?.(()=>{});
+  }
+
+  hideCallUI();
+
+  $('#incoming')
+    .classList
+    .remove('on');
+
+  /*
+     Chat is always available after call cleanup.
+  */
+  $('#mi').disabled=false;
+  $('#bsend').disabled=false;
+
+  updateAllBtns();
+}
 
 function leave(){
-  stopHeartbeat(); if(S.socket) try{S.socket.disconnect()}catch(e){}
-  S.friends=[]; S.chats={}; S.active=null; S.joined=false; cleanupCall(false);
-  $('#mleave').classList.add('h'); $('#app').classList.remove('on');
-  $('#entry').style.display=''; $('#nick').value=''; ready();
-  toast('☁️','كل الآثار اتمسحت');
+
+  cleanupCall(true);
+
+  stopHeartbeat();
+
+  if(S.socket){
+
+    try{
+      S.socket.disconnect();
+    }catch(e){}
+  }
+
+  S.friends=[];
+  S.chats={};
+  S.active=null;
+  S.joined=false;
+
+  $('#mleave')
+    .classList
+    .add('h');
+
+  $('#app')
+    .classList
+    .remove('on');
+
+  $('#entry')
+    .style
+    .display='';
+
+  $('#nick').value='';
+
+  ready();
+
+  toast(
+    '☁️',
+    'كل الآثار اتمسحت'
+  );
 }
 
-$('#bsend').onclick=sendMsg;
-$('#mi').onkeydown=e=>{ if(e.key==='Enter'){ e.preventDefault(); sendMsg(); } };
-$('#bemoji').onclick=()=>{ if(!S.active) return; $('#mi').value+=['😺','✨','☁️','💖','🌟','🐱'][Math.floor(Math.random()*6)]; $('#mi').focus(); };
-$('#bimg').onclick=()=>{ if(S.active) $('#fimg').click(); };
-$('#bvid').onclick=()=>{ if(S.active) $('#fvid').click(); };
-$('#bfile').onclick=()=>{ if(S.active) $('#ffile').click(); };
-$('#fimg').onchange=()=>handleFile($('#fimg'));
-$('#fvid').onchange=()=>handleFile($('#fvid'));
-$('#ffile').onchange=()=>handleFile($('#ffile'));
-$('#bcall').onclick=startCall;
-$('#binv').onclick=()=>{ $('#minv').classList.remove('h'); $('#iinput').value=''; $('#iinput').focus(); };
-$('#bsinv').onclick=sendInvite;
-$('#fsearch').oninput=renderFriends;
-$('#bside').onclick=()=>$('#side').classList.toggle('open');
-$('#bleave').onclick=()=>$('#mleave').classList.remove('h');
-$('#bcleave').onclick=leave;
-$('#incAccept').onclick=acceptIncoming;
-$('#incReject').onclick=rejectIncoming;
-$('#cmute').onclick=toggleMute;
-$('#cdeaf').onclick=toggleDeaf;
-$('#cfixaudio').onclick=()=>{ forceRemoteAudioPlay(); toast('🔊','تم تشغيل الصوت'); };
-$('#cnoise').onclick=toggleNoise;
-$('#ccam').onclick=toggleCam;
-$('#cstream').onclick=toggleShare;
-$('#cwatch').onclick=toggleWatch;
-$('#cexpand').onclick=cycleExpand;
-$('#cmin').onclick=toggleMini;
-$('#cleave').onclick=()=>cleanupCall(true);
-$('#vwatch').onclick=toggleWatch;
-$('#vexpand').onclick=cycleExpand;
-$('#vmax').onclick=toggleMini;
-$('#vclose').onclick=()=>cleanupCall(true);
-$('#watchStreamBtn').onclick=enterStreamWatch;
-$$('[data-c]').forEach(b=>b.onclick=()=>{ const id=b.dataset.c; if(id) $('#'+id).classList.add('h'); });
-$$('.mod').forEach(m=>m.onclick=e=>{ if(e.target===m) m.classList.add('h'); });
-document.addEventListener('keydown',e=>{ if(e.key==='Escape'&&S.videoMode==='streamwatch') exitStreamWatch(); });
+/* =========================================================
+   EVENTS
+========================================================= */
+
+function wireEvents(){
+
+  $('#bsend').onclick=
+    sendMsg;
+
+  $('#mi').onkeydown=e=>{
+
+    if(e.key==='Enter'){
+
+      e.preventDefault();
+      sendMsg();
+    }
+  };
+
+  $('#bemoji').onclick=()=>{
+
+    if(!S.active)return;
+
+    $('#mi').value+=
+      [
+        '😺',
+        '✨',
+        '☁️',
+        '💖',
+        '🌟',
+        '🐱'
+      ][
+        Math.floor(
+          Math.random()*6
+        )
+      ];
+
+    $('#mi').focus();
+  };
+
+  $('#bimg').onclick=()=>{
+
+    if(S.active){
+      $('#fimg').click();
+    }
+  };
+
+  $('#bvid').onclick=()=>{
+
+    if(S.active){
+      $('#fvid').click();
+    }
+  };
+
+  $('#bfile').onclick=()=>{
+
+    if(S.active){
+      $('#ffile').click();
+    }
+  };
+
+  $('#fimg').onchange=()=>
+    handleFile($('#fimg'));
+
+  $('#fvid').onchange=()=>
+    handleFile($('#fvid'));
+
+  $('#ffile').onchange=()=>
+    handleFile($('#ffile'));
+
+  $('#bcall').onclick=
+    startCall;
+
+  $('#binv').onclick=()=>{
+
+    $('#minv')
+      .classList
+      .remove('h');
+
+    $('#iinput').value='';
+
+    $('#iinput').focus();
+  };
+
+  $('#bsinv').onclick=
+    sendInvite;
+
+  $('#fsearch').oninput=
+    renderFriends;
+
+  $('#bside').onclick=()=>
+    $('#side')
+      .classList
+      .toggle('open');
+
+  $('#bleave').onclick=()=>
+    $('#mleave')
+      .classList
+      .remove('h');
+
+  $('#bcleave').onclick=
+    leave;
+
+  /* incoming */
+
+  $('#incAccept').onclick=
+    acceptIncoming;
+
+  $('#incReject').onclick=
+    rejectIncoming;
+
+  /* call controls */
+
+  $('#cmute').onclick=
+    toggleMute;
+
+  $('#cdeaf').onclick=
+    toggleDeaf;
+
+  $('#ccam').onclick=
+    toggleCam;
+
+  $('#cstream').onclick=
+    toggleShare;
+
+  $('#cscreenmute').onclick=
+    toggleScreenMute;
+
+  $('#cwatch').onclick=
+    toggleWatch;
+
+  $('#cexpand').onclick=
+    cycleExpand;
+
+  $('#cmin').onclick=
+    toggleMini;
+
+  $('#cleave').onclick=
+    ()=>cleanupCall(true);
+
+  /* player */
+
+  $('#vwatch').onclick=
+    toggleWatch;
+
+  $('#vscreenmute').onclick=
+    toggleScreenMute;
+
+  $('#vexpand').onclick=
+    cycleExpand;
+
+  $('#vmax').onclick=
+    toggleMini;
+
+  /*
+     X = minimize the player, not hang up.
+  */
+  $('#vclose').onclick=
+    toggleMini;
+
+  $('#watchStreamBtn').onclick=
+    enterStreamWatch;
+
+  /*
+     Escape:
+     exit player mode only.
+  */
+  document.addEventListener(
+    'keydown',
+    e=>{
+
+      if(
+        e.key==='Escape'&&
+        S.videoMode==='streamwatch'
+      ){
+
+        exitStreamWatch();
+      }
+    }
+  );
+
+  /*
+     Browser fullscreen exit.
+  */
+  document.addEventListener(
+    'fullscreenchange',
+    ()=>{
+
+      if(
+        !document.fullscreenElement&&
+        S.videoMode==='streamwatch'
+      ){
+
+        setVideoMode(
+          'normal'
+        );
+      }
+
+    }
+  );
+
+  /*
+     If the user clicks anywhere, retry remote audio after
+     an autoplay block.
+  */
+  document.addEventListener(
+    'click',
+    ()=>replayRemoteAudio(),
+    {passive:true}
+  );
+
+  $$('[data-c]').forEach(
+    b=>{
+
+      b.onclick=()=>{
+
+        const id=
+          b.dataset.c;
+
+        if(id){
+
+          $('#'+id)
+            .classList
+            .add('h');
+        }
+      };
+    }
+  );
+
+  $$('.mod').forEach(
+    m=>{
+
+      m.onclick=e=>{
+
+        if(e.target===m){
+
+          m.classList.add('h');
+        }
+      };
+    }
+  );
+
+  updateAllBtns();
+}
+
+function rejectIncoming(){
+
+  const from=
+    S.incomingFrom;
+
+  if(
+    from&&
+    S.socket
+  ){
+
+    S.socket.emit(
+      'call:reject',
+      {to:from}
+    );
+  }
+
+  S.incomingFrom=null;
+
+  $('#incoming')
+    .classList
+    .remove('on');
+}
+
 })();
 </script>
 </body>
