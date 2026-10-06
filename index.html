@@ -237,7 +237,7 @@ const $=s=>document.querySelector(s),$$=s=>document.querySelectorAll(s);
 const now=()=>new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
 const esc=s=>{const d=document.createElement('div');d.textContent=s;return d.innerHTML};
 
-setTimeout(()=>{$('#load').classList.add('gone');setupEntry();},1400);
+setTimeout(()=>{$('#load').classList.add('gone');setupEntry();},1000);
 
 function setupEntry(){
   const row=$('#avs');   AVS.forEach((a,i)=>{const e=document.createElement('div');e.className='av'+(i===0?' on':'');e.textContent=a;e.onclick=()=>{$$('.av').forEach(x=>x.classList.remove('on'));e.classList.add('on');S.av=a;ready()};row.appendChild(e)});
@@ -247,105 +247,10 @@ function setupEntry(){
 }
 function ready(){$('#benter').disabled=$('#nick').value.trim().length<2}
 
-function enter(){
-  const n=$('#nick').value.trim().slice(0,16);
-  if(n.length<2)return;
-  S.nick=n;$('#mn').textContent=n;$('#mav').textContent=S.av;
-  $('#entry').style.display='none';$('#app').classList.add('on');
-  toast('✨','Welcome, '+n);renderFriends();
-}
-
-function renderFriends(){
-  const q=($('#fsearch').value||'').toLowerCase();
-  const list=S.friends.filter(f=>!q||f.n.toLowerCase().includes(q));
-  const el=$('#flist');
-  if(!list.length){el.innerHTML='<div class="empty">No companions yet.<br>Invite someone by name.</div>';return}
-  el.innerHTML=list.map(f=>`<div class="si ${S.active===f.n?'active':''}" data-n="${f.n}"><span class="sa">${f.a}</span><div><div class="sn">${f.n}</div><div class="ssub">${f.online?'Online':'Away'}</div></div><span class="dot ${f.online?'':'off'}"></span></div>`).join('');
-  el.querySelectorAll('.si').forEach(item=>{item.onclick=()=>openChat(item.dataset.n)});
-}
-
-function openChat(name){
-  S.active=name;if(!S.chats[name])S.chats[name]=[];
-  $('#rtitle').textContent=name;$('#rsub').textContent='Private conversation';
-  $('#bcall').disabled=false;$('#mi').disabled=false;$('#bsend').disabled=false;
-  renderFriends();renderMsgs();
-}
-
-function renderMsgs(){
-  const list=S.active?(S.chats[S.active]||[]):[];
-  let h='';
-  if(!S.active)h=`<div class="msg sys"><div class="mi">✨</div><div><div class="ma">Realm Guide</div><div class="mt">Invite a companion by name. Only real people you talk to will appear. All messages vanish when you leave.</div></div></div>`;
-  else if(!list.length)h=`<div class="msg sys"><div class="mi">✨</div><div><div class="ma">Realm Guide</div><div class="mt">Conversation with ${esc(S.active)} started. Messages are private and ephemeral.</div></div></div>`;
-  list.forEach(m=>{
-    let body='';
-    if(m.img)body=`<img class="mimg" src="${m.img}">`;
-    else if(m.vid)body=`<video class="mvid" src="${m.vid}" controls></video>`;
-    else if(m.file)body=`<div class="mt">📎 ${esc(m.file)}</div>`;
-    else body=`<div class="mt">${esc(m.text)}</div>`;
-    h+=`<div class="msg ${m.own?'own':''}"><div class="mi">${m.av}</div><div><div class="ma">${m.author}</div>${body}<div class="mtime">${m.time}</div></div></div>`;
-  });
-  const box=$('#msgs');box.innerHTML=h;box.scrollTop=box.scrollHeight;
-}
-
-function sendMsg(){
-  if(!S.active)return;const t=$('#mi').value.trim();if(!t)return;
-  S.chats[S.active].push({author:S.nick,av:S.av,text:t,time:now(),own:true});
-  $('#mi').value='';renderMsgs();
-}
-
-function handleFile(inp,type){
-  if(!S.active)return;const f=inp.files[0];if(!f)return;
-  if(type==='file'){S.chats[S.active].push({author:S.nick,av:S.av,file:f.name,time:now(),own:true});renderMsgs();toast('📎','File shared');inp.value='';return}
-  const r=new FileReader();
-  r.onload=ev=>{const m={author:S.nick,av:S.av,time:now(),own:true};if(type==='img')m.img=ev.target.result;else m.vid=ev.target.result;S.chats[S.active].push(m);renderMsgs();toast(type==='img'?'🖼️':'🎬',(type==='img'?'Image':'Video')+' shared')};
-  r.readAsDataURL(f);inp.value='';
-}
-
-function sendInvite(){
-  const n=$('#iinput').value.trim();if(n.length<2)return;
-  if(n.toLowerCase()===S.nick.toLowerCase()){toast('⚠️','Cannot invite yourself');return}
-  if(S.friends.some(f=>f.n.toLowerCase()===n.toLowerCase())){toast('ℹ️','Already a companion');return}
-  S.friends.push({n,a:'🐱',online:true});renderFriends();openChat(n);
-  $('#minv').classList.add('h');
-  toast('📨','Invite sent to '+n+' (needs server for real delivery)');
-}
-
-function startCall(){
-  if(!S.active)return;if(S.inCall){endCall();return}
-  S.inCall=true;$('#callbar').classList.add('on');$('#cname').textContent='Call with '+S.active;
-  $('#bcall').classList.add('on');$('#qrow').style.display='flex';toast('📞','Call started with '+S.active);
-}
-function endCall(){
-  if(S.stream){S.stream.getTracks().forEach(t=>t.stop());S.stream=null}
-  S.inCall=false;S.muted=false;S.deaf=false;S.sharing=false;
-  $('#callbar').classList.remove('on');$('#bcall').classList.remove('on');$('#qrow').style.display='none';
-  $('#cmute').classList.remove('on');$('#cmute').textContent='🔇 Mute';
-  $('#cdeaf').classList.remove('on');$('#cdeaf').textContent='🔊 Deafen';
-  $('#cstream').classList.remove('on');toast('📞','Call ended');
-}
-function toggleMute(){S.muted=!S.muted;if(S.stream)S.stream.getAudioTracks().forEach(t=>t.enabled=!S.muted);$('#cmute').classList.toggle('on',S.muted);$('#cmute').textContent=S.muted?'🔊 Unmute':'🔇 Mute'}
-function toggleDeaf(){S.deaf=!S.deaf;$('#cdeaf').classList.toggle('on',S.deaf);$('#cdeaf').textContent=S.deaf?'🔈 Undeafen':'🔊 Deafen';toast(S.deaf?'🔇':'🔊',S.deaf?'Deafened':'Undeafened')}
-async function toggleStream(){
-  if(S.sharing){if(S.stream)S.stream.getTracks().forEach(t=>t.stop());S.stream=null;S.sharing=false;$('#cstream').classList.remove('on');toast('🖥️️','Stream stopped');return}
-  try{const res=+$('#qres').value\vert{}\vert{}720,fps=+$('#qfps').value||30;
-  S.stream=await navigator.mediaDevices.getDisplayMedia({video:{width:{ideal:res===480?854:1280},height:{ideal:res},frameRate:{ideal:fps,max:fps}},audio:true});
-  S.sharing=true;$('#cstream').classList.add('on');toast('🖥️','Stream started');
-  S.stream.getVideoTracks()[0].onended=()=>{S.sharing=false;$('#cstream').classList.remove('on')}}catch(e){toast('⚠️','Stream cancelled')}
-}
-
-function leave(){
-  if(S.stream)S.stream.getTracks().forEach(t=>t.stop());
-  S.friends=[];S.chats={};S.active=null;S.inCall=false;
-  $('#mleave').classList.add('h');$('#app').classList.remove('on');$('#entry').style.display='';
-  $('#nick').value='';ready();toast('☁️','All trails erased');
-}
-window.addEventListener('beforeunload',()=>{if(S.stream)S.stream.getTracks().forEach(t=>t.stop())});
-
 function toast(ic,tx){const e=document.createElement('div');e.className='toast';e.innerHTML=`<span style="font-size:16px">${ic}</span><span>${tx}</span>`;$('#toasts').appendChild(e);setTimeout(()=>e.remove(),3000)}
 
-// ===== REALTIME SERVER + WEBRTC OVERRIDES =====
 const SERVER_URL = "https://cat-dressing-server-app.vercel.app";
-S.socket=null; S.pc=null; S.callWith=null; S.incomingFrom=null; S.localStream=null; S.screenStream=null; S.muted=false; S.deaf=false;
+S.socket=null; S.pc=null; S.callWith=null; S.incomingFrom=null; S.localStream=null; S.screenStream=null;
 
 function connectRealtime(){
   S.socket=io(SERVER_URL,{transports:['websocket','polling']});
@@ -371,13 +276,61 @@ function connectRealtime(){
   S.socket.on('call:ice',async x=>{if(S.pc&&x.candidate)try{await S.pc.addIceCandidate(x.candidate)}catch(e){}});
   S.socket.on('call:hangup',x=>{toast('📞',x.from+' ended the call');cleanupCall(false)});
 }
+
 function addFriend(u){if(!u)return;let f=S.friends.find(x=>x.n.toLowerCase()===u.n.toLowerCase());if(f)f.added=true;else S.friends.push({...u,added:true});renderFriends()}
-function enter(){const n=$('#nick').value.trim().slice(0,16);if(n.length<2)return;S.nick=n;connectRealtime()}
-function sendInvite(){const n=$('#iinput').value.trim();if(n.length<2)return;if(n.toLowerCase()===S.nick.toLowerCase())return toast('⚠️','Cannot invite yourself');S.socket.emit('invite:send',{to:n});$('#minv').classList.add('h')}
+
+function enter(){
+  const n=$('#nick').value.trim().slice(0,16);
+  if(n.length<2)return;
+  S.nick=n;
+  connectRealtime();
+}
+
+function renderFriends(){
+  const q=($('#fsearch').value||'').toLowerCase();
+  const list=S.friends.filter(f=>!q||f.n.toLowerCase().includes(q));
+  const el=$('#flist');
+  if(!list.length){el.innerHTML='<div class="empty">No companions yet.<br>Invite someone by name.</div>';return}
+  el.innerHTML=list.map(f=>`<div class="si ${S.active===f.n?'active':''}" data-n="${f.n}"><span class="sa">${f.a}</span><div><div class="sn">${f.n}</div><div class="ssub">${f.online?'Online':'Away'}</div></div><span class="dot ${f.online?'':'off'}"></span></div>`).join('');
+  el.querySelectorAll('.si').forEach(item=>{item.onclick=()=>openChat(item.dataset.n)});
+}
+
+function openChat(name){
+  S.active=name;if(!S.chats[name])S.chats[name]=[];
+  $('#rtitle').textContent=name;$('#rsub').textContent='Private conversation';
+  $('#bcall').disabled=false;$('#mi').disabled=false;$('#bsend').disabled=false;
+  renderFriends();renderMsgs();
+}
+
+function renderMsgs(){
+  const list=S.active?(S.chats[S.active]||[]):[];
+  let h='';
+  if(!S.active)h='<div class="msg sys"><div class="mi">✨</div><div><div class="ma">Realm Guide</div><div class="mt">Invite a companion by exact name to start.</div></div></div>';
+  else if(!list.length)h='<div class="msg sys"><div class="mi">✨</div><div><div class="ma">Realm Guide</div><div class="mt">Conversation with '+esc(S.active)+'. Messages are ephemeral.</div></div></div>';
+  list.forEach(m=>{
+    let body=m.fileName?`<button class="btn2 dl" data-file="${encodeURIComponent(m.data)}" data-name="${encodeURIComponent(m.fileName)}">📎 ${esc(m.fileName)}</button>`:m.img?`<img class="mimg" src="${m.img}">`:m.vid?`<video class="mvid" src="${m.vid}" controls></video>`:`<div class="mt">${esc(m.text)}</div>`;
+    h+=`<div class="msg ${m.own?'own':''}"><div class="mi">${m.av}</div><div><div class="ma">${esc(m.author)}</div>${body}<div class="mtime">${m.time}</div></div></div>`
+  });
+  $('#msgs').innerHTML=h;$('#msgs').scrollTop=$('#msgs').scrollHeight;   $$('.dl').forEach(b=>b.onclick=()=>{const a=document.createElement('a');a.href=decodeURIComponent(b.dataset.file);a.download=decodeURIComponent(b.dataset.name);document.body.appendChild(a);a.click();a.remove()});
+}
+
 function sendMsg(){if(!S.active||!S.socket)return;const t=$('#mi').value.trim();if(!t)return;S.socket.emit('chat:message',{to:S.active,message:t});$('#mi').value=''}
-function renderMsgs(){const list=S.active?(S.chats[S.active]||[]):[];let h='';if(!S.active)h='<div class="msg sys"><div class="mi">✨</div><div><div class="ma">Realm Guide</div><div class="mt">Invite a companion by exact name to start.</div></div></div>';else if(!list.length)h='<div class="msg sys"><div class="mi">✨</div><div><div class="ma">Realm Guide</div><div class="mt">Conversation with '+esc(S.active)+'. Messages are ephemeral.</div></div></div>';list.forEach(m=>{let body=m.fileName?`<button class="btn2 dl" data-file="${encodeURIComponent(m.data)}" data-name="${encodeURIComponent(m.fileName)}">📎 ${esc(m.fileName)}</button>`:m.img?`<img class="mimg" src="${m.img}">`:m.vid?`<video class="mvid" src="${m.vid}" controls></video>`:`<div class="mt">${esc(m.text)}</div>`;h+=`<div class="msg ${m.own?'own':''}"><div class="mi">${m.av}</div><div><div class="ma">${esc(m.author)}</div>${body}<div class="mtime">${m.time}</div></div></div>`});$('#msgs').innerHTML=h;$('#msgs').scrollTop=$('#msgs').scrollHeight;$$('.dl').forEach(b=>b.onclick=()=>{const a=document.createElement('a');a.href=decodeURIComponent(b.dataset.file);a.download=decodeURIComponent(b.dataset.name);document.body.appendChild(a);a.click();a.remove()})}
-function handleFile(inp,type){if(!S.active||!inp.files[0])return;const f=inp.files[0];if(f.size>20*1024*1024){toast('⚠️','Maximum file size is 20 MB');inp.value='';return}const r=new FileReader();r.onload=()=>S.socket.emit('chat:file',{to:S.active,name:f.name,type:f.type,data:r.result});r.readAsDataURL(f);inp.value=''}
-async function startCall(){if(!S.active||!S.socket)return;if(S.pc)return;S.callWith=S.active;S.socket.emit('call:invite',{to:S.callWith});$('#calltitle').textContent='Calling '+S.callWith;$('#callsub').textContent='Waiting for answer...';$('#callbox').classList.add('on')}
+
+function handleFile(inp,type){
+  if(!S.active||!inp.files[0])return;const f=inp.files[0];
+  if(f.size>20*1024*1024){toast('⚠️','Maximum file size is 20 MB');inp.value='';return}
+  const r=new FileReader();
+  r.onload=()=>S.socket.emit('chat:file',{to:S.active,name:f.name,type:f.type,data:r.result});
+  r.readAsDataURL(f);inp.value='';
+}
+
+function sendInvite(){
+  const n=$('#iinput').value.trim();if(n.length<2)return;
+  if(n.toLowerCase()===S.nick.toLowerCase())return toast('⚠️','Cannot invite yourself');
+  S.socket.emit('invite:send',{to:n});$('#minv').classList.add('h');
+}
+
+async function startCall(){if(!S.active||!S.socket||S.pc)return;S.callWith=S.active;S.socket.emit('call:invite',{to:S.callWith});$('#calltitle').textContent='Calling '+S.callWith;$('#callsub').textContent='Waiting for answer...';$('#callbox').classList.add('on')}
 function incomingCall(from){S.incomingFrom=from.n;$('#incAv').textContent=from.a;$('#incName').textContent=from.n+' is calling';$('#incoming').classList.add('on')}
 async function acceptIncoming(){const from=S.incomingFrom;if(!from)return;$('#incoming').classList.remove('on');S.callWith=from;S.socket.emit('call:accept',{to:from});await preparePeer();$('#calltitle').textContent='Call with '+from;$('#callsub').textContent='Connected';$('#callbox').classList.add('on')}
 function rejectIncoming(){if(S.incomingFrom)S.socket.emit('call:reject',{to:S.incomingFrom});S.incomingFrom=null;$('#incoming').classList.remove('on')}
@@ -391,18 +344,39 @@ async function toggleCamera(){if(!S.localStream)return;S.localStream.getVideoTra
 async function toggleShare(){if(!S.pc)return;if(S.screenStream){await stopShare();return}try{S.screenStream=await navigator.mediaDevices.getDisplayMedia({video:true,audio:true});const sender=S.pc.getSenders().find(s=>s.track?.kind==='video');if(sender)await sender.replaceTrack(S.screenStream.getVideoTracks()[0]);$('#vShare').textContent='🛑 Stop sharing';S.screenStream.getVideoTracks()[0].onended=stopShare}catch(e){toast('⚠️','Screen sharing cancelled')}}
 async function stopShare(){if(!S.screenStream)return;S.screenStream.getTracks().forEach(t=>t.stop());S.screenStream=null;const cam=S.localStream?.getVideoTracks()[0];const sender=S.pc?.getSenders().find(s=>s.track?.kind==='video');if(sender&&cam)await sender.replaceTrack(cam);$('#vShare').textContent='🖥️ Share screen'}
 
-// Rebind buttons after overrides.
-$('#bsend').onclick=sendMsg;$('#mi').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();sendMsg}};$('#bimg').onclick=()=>S.active&&$('#fimg').click();$('#bvid').onclick=()=>S.active&&$('#fvid').click();$('#bfile').onclick=()=>S.active&&$('#ffile').click();$('#fimg').onchange=()=>handleFile($('#fimg'),'img');$('#fvid').onchange=()=>handleFile($('#fvid'),'vid');$('#ffile').onchange=()=>handleFile($('#ffile'),'file');$('#bcall').onclick=startCall;$('#binv').onclick=()=>{$('#minv').classList.remove('h');$('#iinput').value='';$('#iinput').focus()};$('#bsinv').onclick=sendInvite;$('#incAccept').onclick=acceptIncoming;$('#incReject').onclick=rejectIncoming;$('#vMute').onclick=toggleMute;$('#vDeaf').onclick=toggleDeaf;$('#vCam').onclick=toggleCamera;$('#vShare').onclick=toggleShare;$('#vHang').onclick=()=>cleanupCall(true);
+function leave(){
+  if(S.stream)S.stream.getTracks().forEach(t=>t.stop());
+  S.friends=[];S.chats={};S.active=null;
+  $('#mleave').classList.add('h');$('#app').classList.remove('on');$('#entry').style.display='';
+  $('#nick').value='';ready();toast('☁️','All trails erased');
+}
 
-$('#bsend').onclick=sendMsg;$('#mi').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();sendMsg()}};
+window.addEventListener('beforeunload',()=>{if(S.stream)S.stream.getTracks().forEach(t=>t.stop())});
+
+// Event Listeners
+$('#bsend').onclick=sendMsg;
+$('#mi').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();sendMsg()}};
 $('#bemoji').onclick=()=>{if(!S.active)return;$('#mi').value+=['😺','✨','☁️','💖','🌟','🐱'][Math.floor(Math.random()*6)];$('#mi').focus()};
-$('#bimg').onclick=()=>{if(S.active)$('#fimg').click()};$('#bvid').onclick=()=>{if(S.active)$('#fvid').click()};$('#bfile').onclick=()=>{if(S.active)$('#ffile').click()};
-$('#fimg').onchange=()=>handleFile($('#fimg'),'img');$('#fvid').onchange=()=>handleFile($('#fvid'),'vid');$('#ffile').onchange=()=>handleFile($('#ffile'),'file');
-$('#bcall').onclick=startCall;$('#cmute').onclick=toggleMute;$('#cdeaf').onclick=toggleDeaf;$('#cstream').onclick=toggleStream;$('#cleave').onclick=endCall;
+$('#bimg').onclick=()=>{if(S.active)$('#fimg').click()};
+$('#bvid').onclick=()=>{if(S.active)$('#fvid').click()};
+$('#bfile').onclick=()=>{if(S.active)$('#ffile').click()};
+$('#fimg').onchange=()=>handleFile($('#fimg'),'img');
+$('#fvid').onchange=()=>handleFile($('#fvid'),'vid');
+$('#ffile').onchange=()=>handleFile($('#ffile'),'file');
+$('#bcall').onclick=startCall;
 $('#binv').onclick=()=>{$('#minv').classList.remove('h');$('#iinput').value='';$('#iinput').focus()};
-$('#bsinv').onclick=sendInvite;$('#fsearch').oninput=renderFriends;
+$('#bsinv').onclick=sendInvite;
+$('#fsearch').oninput=renderFriends;
 $('#bside').onclick=()=>$('#side').classList.toggle('open');
-$('#bleave').onclick=()=>$('#mleave').classList.remove('h');$('#bcleave').onclick=leave; $$('[data-c]').forEach(b=>b.onclick=()=>{const id=b.dataset.c;if(id)$('#'+id).classList.add('h')}); $$('.mod').forEach(m=>m.onclick=e=>{if(e.target===m)m.classList.add('h')});
+$('#bleave').onclick=()=>$('#mleave').classList.remove('h');
+$('#bcleave').onclick=leave;
+$('#incAccept').onclick=acceptIncoming;
+$('#incReject').onclick=rejectIncoming;
+$('#vMute').onclick=toggleMute;
+$('#vDeaf').onclick=toggleDeaf;
+$('#vCam').onclick=toggleCamera;
+$('#vShare').onclick=toggleShare;
+$('#vHang').onclick=()=>cleanupCall(true);  $$('[data-c]').forEach(b=>b.onclick=()=>{const id=b.dataset.c;if(id)$('#'+id).classList.add('h')}); $$('.mod').forEach(m=>m.onclick=e=>{if(e.target===m)m.classList.add('h')});
 })();
 </script>
 </body>
