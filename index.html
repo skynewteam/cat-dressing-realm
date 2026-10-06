@@ -7,7 +7,7 @@
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐱</text></svg>">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-:root{--bg:#050e1c;--s1:#0a1c35;--s3:#1a5f9e;--s4:#2b8fd4;--s5:#4fc3f7;--gold:#ffd54f;--mint:#69f0ae;--coral:#ff8a65;--danger:#ff5252;--glass:rgba(10,28,53,.9);--border:rgba(79,195,247,.22);--text:#e8f4fd;--dim:#7eb8d9;--f:system-ui,-apple-system,sans-serif}
+:root{--bg:#050e1c;--s1:#0a1c35;--s3:#1a5f9e;--s4:#2b8fd4;--s5:#4fc3f7;--gold:#ffd54f;--mint:#69f0ae;--coral:#ff8a65;--danger:#ff5252;--glass:rgba(10,28,53,.92);--border:rgba(79,195,247,.22);--text:#e8f4fd;--dim:#7eb8d9;--f:system-ui,-apple-system,sans-serif}
 html,body{height:100%;overflow:hidden;font-family:var(--f);background:var(--bg);color:var(--text);user-select:none}
 .hidden{display:none!important}
 .bg{position:absolute;inset:0;background:radial-gradient(ellipse at 20% 30%,rgba(26,95,158,.28),transparent 50%),linear-gradient(180deg,#030b18,#050e1c 40%,#0a1c35 100%);pointer-events:none}
@@ -38,16 +38,15 @@ html,body{height:100%;overflow:hidden;font-family:var(--f);background:var(--bg);
 #app{position:fixed;inset:0;display:none;flex-direction:column}
 #app.on{display:flex}
 
-/* ===== CALL BAR (دائم أثناء المكالمة) ===== */
-#callbar{display:none;align-items:center;justify-content:center;gap:8px;padding:8px 12px;background:rgba(26,95,158,.45);border-bottom:1px solid var(--border);z-index:40;flex-wrap:wrap}
+#callbar{display:none;align-items:center;justify-content:center;gap:8px;padding:8px 12px;background:rgba(26,95,158,.5);border-bottom:1px solid var(--border);z-index:40;flex-wrap:wrap}
 #callbar.on{display:flex}
 .cb-name{font-weight:600;font-size:.88rem;margin-left:6px;color:var(--gold)}
-.cb-btn{padding:7px 11px;background:rgba(5,14,28,.6);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:.76rem;cursor:pointer;display:flex;align-items:center;gap:4px;transition:.15s}
-.cb-btn:hover{background:rgba(43,143,212,.3)}
-.cb-btn.off{background:rgba(255,82,82,.25);border-color:var(--danger);color:#ffcdd2}
+.cb-btn{padding:7px 11px;background:rgba(5,14,28,.65);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:.76rem;cursor:pointer;display:flex;align-items:center;gap:4px;transition:.15s}
+.cb-btn:hover{background:rgba(43,143,212,.35)}
+.cb-btn.off{background:rgba(255,82,82,.28);border-color:var(--danger);color:#ffcdd2}
 .cb-btn.on-state{background:rgba(105,240,174,.15);border-color:var(--mint)}
-.cb-btn.dng{background:rgba(255,82,82,.3);border-color:var(--danger)}
-.cb-btn.stream-on{background:rgba(255,213,79,.2);border-color:var(--gold);color:var(--gold)}
+.cb-btn.dng{background:rgba(255,82,82,.32);border-color:var(--danger)}
+.cb-btn.stream-on{background:rgba(255,213,79,.22);border-color:var(--gold);color:var(--gold)}
 
 .top{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--glass);border-bottom:1px solid var(--border);z-index:20}
 .tl{display:flex;align-items:center;gap:8px}
@@ -69,9 +68,7 @@ html,body{height:100%;overflow:hidden;font-family:var(--f);background:var(--bg);
 .dot{width:7px;height:7px;border-radius:50%;background:var(--mint);margin-right:auto}
 .dot.off{background:#607d8b}
 .empty{padding:16px 12px;color:var(--dim);font-size:.78rem;text-align:center;line-height:1.4}
-.chat{display:flex;flex-direction:column;overflow:hidden;background:rgba(3,11,24,.25);position:relative;min-width:0}
-.comp{position:relative;z-index:70}
-#msgs{min-width:0}
+.chat{display:flex;flex-direction:column;overflow:hidden;background:rgba(3,11,24,.25)}
 .ch{padding:10px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
 .ch h2{font-size:.95rem;color:var(--s5);font-weight:700}
 .ch-sub{font-size:.65rem;color:var(--dim)}
@@ -97,8 +94,6 @@ html,body{height:100%;overflow:hidden;font-family:var(--f);background:var(--bg);
 #mi{flex:1;padding:8px 11px;background:rgba(5,14,28,.5);border:1px solid var(--border);border-radius:9px;color:var(--text);font-size:.85rem;outline:none}
 #mi:focus{border-color:var(--s5)}
 .snd{width:36px;height:36px;background:linear-gradient(135deg,var(--s3),var(--s4));border:none;border-radius:9px;color:#fff;font-size:13px;cursor:pointer}
-.qrow{display:flex;gap:4px;padding:4px 10px;font-size:.7rem;color:var(--dim)}
-.qrow select{padding:3px 6px;background:rgba(5,14,28,.5);border:1px solid var(--border);border-radius:5px;color:var(--text);font-size:.7rem;outline:none}
 .mod{position:fixed;inset:0;z-index:50;background:rgba(3,11,24,.7);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center}
 .mod.h{display:none!important}
 .mbx{background:var(--glass);border:1px solid var(--border);border-radius:14px;width:90%;max-width:340px}
@@ -110,46 +105,57 @@ html,body{height:100%;overflow:hidden;font-family:var(--f);background:var(--bg);
 .mbd p{font-size:.8rem;color:var(--dim);margin-bottom:10px;line-height:1.4}
 .ma{display:flex;gap:7px}.ma .btn,.ma .btn2{flex:1}
 #toasts{position:fixed;top:52px;left:10px;z-index:90;display:flex;flex-direction:column;gap:5px}
-.toast{background:var(--glass);border:1px solid var(--border);border-radius:9px;padding:9px 12px;min-width:200px;max-width:260px;display:flex;align-items:center;gap:7px;font-size:.8rem;animation:ti .2s ease-out}
+.toast{background:var(--glass);border:1px solid var(--border);border-radius:9px;padding:9px 12px;min-width:200px;max-width:280px;display:flex;align-items:center;gap:7px;font-size:.8rem;animation:ti .2s ease-out}
 @keyframes ti{from{opacity:0;transform:translateX(-16px)}}
 
-/* ===== FLOATING VIDEO PANEL (مش بيحجب الشات) ===== */
 #videofloat{
-  position:fixed;top:96px;left:calc(220px + 16px);bottom:auto;z-index:35;
-  display:none;flex-direction:column;gap:8px;
-  width:min(340px,90vw);background:var(--glass);
-  border:1px solid var(--border);border-radius:14px;
-  padding:10px;backdrop-filter:blur(12px);
-  box-shadow:0 8px 32px rgba(0,0,0,.45);
+  position:fixed;bottom:14px;left:14px;z-index:35;
+  display:none;flex-direction:column;gap:6px;
+  width:380px;max-width:calc(100vw - 28px);
+  background:var(--glass);border:1px solid var(--border);border-radius:14px;
+  padding:10px;backdrop-filter:blur(14px);
+  box-shadow:0 10px 40px rgba(0,0,0,.5);
+  transition:width .2s;
 }
 #videofloat.on{display:flex}
-#videofloat.mini{width:auto;padding:6px 10px}
-#videofloat.mini .vwrap{display:none}
-.vheader{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
-.vheader strong{font-size:.82rem;color:var(--gold)}
-.vheader .vbtns{display:flex;gap:4px}
-.vheader button{background:rgba(5,14,28,.5);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:4px 8px;font-size:.7rem;cursor:pointer}
+#videofloat.mini{width:auto;min-width:180px;padding:6px 10px}
+#videofloat.mini .vwrap,#videofloat.mini .vstatus{display:none}
+#videofloat.expanded{width:min(720px,92vw);bottom:14px;left:50%;transform:translateX(-50%)}
+#videofloat.expanded .vwrap video{height:280px}
+#videofloat.fullscreen{
+  inset:0;width:100%;height:100%;max-width:100%;border-radius:0;
+  bottom:0;left:0;transform:none;padding:12px;
+  background:rgba(3,11,24,.96);z-index:45;
+}
+#videofloat.fullscreen .vwrap{grid-template-columns:1fr;flex:1}
+#videofloat.fullscreen .vwrap video{height:100%;min-height:60vh;object-fit:contain}
+.vheader{display:flex;align-items:center;justify-content:space-between;gap:6px}
+.vheader strong{font-size:.82rem;color:var(--gold);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.vheader .vbtns{display:flex;gap:4px;flex-shrink:0}
+.vheader button{background:rgba(5,14,28,.55);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:4px 8px;font-size:.68rem;cursor:pointer}
+.vheader button:hover{background:rgba(43,143,212,.3)}
 .vwrap{display:grid;grid-template-columns:1fr 1fr;gap:6px}
-.vwrap video{width:100%;height:140px;object-fit:cover;background:#000;border-radius:8px;border:1px solid var(--border)}
-#videofloat.single .vwrap{grid-template-columns:1fr}
-#videofloat.single .vwrap video{height:180px}
+.vwrap video{width:100%;height:150px;object-fit:cover;background:#000;border-radius:8px;border:1px solid var(--border)}
+.vstatus{font-size:.65rem;color:var(--dim);text-align:center;margin-top:2px}
 
-#incoming{position:fixed;right:12px;bottom:12px;z-index:80;background:var(--glass);border:1px solid var(--border);border-radius:12px;padding:14px;width:min(320px,90vw);display:none}
+#incoming{position:fixed;right:12px;bottom:12px;z-index:80;background:var(--glass);border:1px solid var(--border);border-radius:12px;padding:14px;width:min(320px,90vw);display:none;box-shadow:0 8px 30px rgba(0,0,0,.4)}
 #incoming.on{display:block}
 .ia{display:flex;gap:8px;align-items:center;margin-bottom:10px}
 .ia .ico{font-size:28px}.ia small{color:var(--dim)}
 .iact{display:flex;gap:7px}
-.iact button{flex:1;padding:9px;border-radius:8px;border:1px solid var(--border);cursor:pointer;background:rgba(255,255,255,.07);color:var(--text)}
+.iact button{flex:1;padding:9px;border-radius:8px;border:1px solid var(--border);cursor:pointer;background:rgba(255,255,255,.07);color:var(--text);font-weight:600}
 .iact .accept{background:linear-gradient(135deg,var(--s3),var(--s4))}
-.iact .reject{background:rgba(255,82,82,.18)}
+.iact .reject{background:rgba(255,82,82,.2)}
 
 ::-webkit-scrollbar{width:3px}::-webkit-scrollbar-thumb{background:rgba(79,195,247,.25);border-radius:2px}
 @media(max-width:700px){
   .body{grid-template-columns:1fr}
   .side{position:fixed;top:48px;bottom:0;width:220px;z-index:25;transform:translateX(110%);transition:transform .2s;border-left:none;border-right:1px solid var(--border)}
   .side.open{transform:translateX(0)}
-  #videofloat{top:108px;left:8px;right:8px;bottom:auto;width:auto}
-  .vwrap video{height:110px}
+  #videofloat{bottom:70px;left:8px;right:8px;width:auto}
+  #videofloat.expanded{left:8px;right:8px;transform:none;width:auto}
+  .vwrap video{height:120px}
+  #videofloat.expanded .vwrap video{height:200px}
 }
 </style>
 <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
@@ -172,14 +178,14 @@ html,body{height:100%;overflow:hidden;font-family:var(--f);background:var(--bg);
 <div id="app">
   <div class="bg"></div>
 
-  <!-- CALL BAR -->
   <div id="callbar">
     <span class="cb-name" id="cname">في مكالمة</span>
-    <button class="cb-btn on-state" id="cmute" title="المايك">🎤 مايك: On</button>
-    <button class="cb-btn on-state" id="cdeaf" title="الديفن">🔊 ديفن: Off</button>
-    <button class="cb-btn" id="cstream" title="شير سكرين">🖥️ شير سكرين</button>
-    <button class="cb-btn" id="ccam" title="الكاميرا">📷 كاميرا: On</button>
-    <button class="cb-btn" id="cmin" title="تصغير">⬇️ تصغير</button>
+    <button class="cb-btn on-state" id="cmute">🎤 مايك: On</button>
+    <button class="cb-btn on-state" id="cdeaf">🔊 ديفن: Off</button>
+    <button class="cb-btn" id="cstream">🖥️ شير سكرين</button>
+    <button class="cb-btn on-state" id="ccam">📷 كاميرا: On</button>
+    <button class="cb-btn" id="cexpand">⛶ تكبير</button>
+    <button class="cb-btn" id="cmin">⬇️ تصغير</button>
     <button class="cb-btn dng" id="cleave">☎️ إنهاء</button>
   </div>
 
@@ -228,19 +234,20 @@ html,body{height:100%;overflow:hidden;font-family:var(--f);background:var(--bg);
   </div>
 </div>
 
-<!-- FLOATING VIDEOS (مش بيحجب الشات) -->
 <div id="videofloat">
   <div class="vheader">
     <strong id="vtitle">مكالمة</strong>
     <div class="vbtns">
-      <button id="vmax">⬆️ تكبير</button>
-      <button id="vclose">✕</button>
+      <button id="vexpand" title="تكبير">⛶</button>
+      <button id="vmax" title="تصغير">⬇️</button>
+      <button id="vclose" title="إنهاء">✕</button>
     </div>
   </div>
   <div class="vwrap">
     <video id="remoteVideo" autoplay playsinline></video>
     <video id="localVideo" autoplay playsinline muted></video>
   </div>
+  <div class="vstatus" id="vstatus">جاري الاتصال...</div>
 </div>
 
 <div class="mod h" id="minv">
@@ -281,91 +288,122 @@ html,body{height:100%;overflow:hidden;font-family:var(--f);background:var(--bg);
 (function(){
 'use strict';
 const SERVER_URL = "https://cat-dressing-server-app.vercel.app";
+
 const S = {
   nick:'', av:'🐱', friends:[], active:null, chats:{},
   socket:null, pc:null, callWith:null, incomingFrom:null,
   localStream:null, screenStream:null,
-  muted:false,     // false = المايك شغال (On)
-  deaf:false,      // false = الديفن مقفول (Off) يعني بتسمع
-  camOn:true,
-  sharing:false,
-  videoMini:false,
-  audioTransceiver:null, videoTransceiver:null,
-  audioSender:null, videoSender:null,
-  pendingIce:[], disconnectTimer:null
+  muted:false, deaf:false, camOn:true, sharing:false,
+  videoMode:'normal',
+  joined:false, heartbeat:null, makingOffer:false
 };
+
 const AVS = ['🐱','😺','😸','😻','😼','🙀','😿','😾','🐈','🦁'];
 const $ = s => document.querySelector(s);
 const $$ = s => document.querySelectorAll(s);
-const esc = s => { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; };
+const esc = s => { const d=document.createElement('div'); d.textContent=s; return d.innerHTML; };
 
 function boot(){
   try{ setupEntry(); }catch(e){ console.error(e); }
-  const loader = $('#load');
+  const loader=$('#load');
   if(loader){ loader.classList.add('gone'); setTimeout(()=>loader.remove(),500); }
 }
-if(document.readyState === 'loading'){
-  document.addEventListener('DOMContentLoaded', boot, {once:true});
-}else{ boot(); }
+if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',boot,{once:true});
+else boot();
 
 function setupEntry(){
-  const row = $('#avs');
+  const row=$('#avs');
   AVS.forEach((a,i)=>{
-    const e = document.createElement('div');
-    e.className = 'av' + (i===0 ? ' on' : '');
-    e.textContent = a;
-    e.onclick = ()=>{ $$('.av').forEach(x=>x.classList.remove('on')); e.classList.add('on'); S.av = a; ready(); };
+    const e=document.createElement('div');
+    e.className='av'+(i===0?' on':'');
+    e.textContent=a;
+    e.onclick=()=>{ $$('.av').forEach(x=>x.classList.remove('on')); e.classList.add('on'); S.av=a; ready(); };
     row.appendChild(e);
   });
-  $('#nick').oninput = ()=>{ $('#nerr').classList.remove('on'); ready(); };
-  $('#nick').onkeydown = e=>{ if(e.key==='Enter' && !$('#benter').disabled) enter(); };
-  $('#benter').onclick = enter;
+  $('#nick').oninput=()=>{ $('#nerr').classList.remove('on'); ready(); };
+  $('#nick').onkeydown=e=>{ if(e.key==='Enter'&&!$('#benter').disabled) enter(); };
+  $('#benter').onclick=enter;
 }
-function ready(){ $('#benter').disabled = $('#nick').value.trim().length < 2; }
+function ready(){ $('#benter').disabled=$('#nick').value.trim().length<2; }
 
-function toast(ic, tx){
-  const e = document.createElement('div');
-  e.className = 'toast';
-  e.innerHTML = `<span style="font-size:16px">${ic}</span><span>${tx}</span>`;
+function toast(ic,tx){
+  const e=document.createElement('div');
+  e.className='toast';
+  e.innerHTML=`<span style="font-size:16px">${ic}</span><span>${tx}</span>`;
   $('#toasts').appendChild(e);
-  setTimeout(()=>e.remove(), 3200);
+  setTimeout(()=>e.remove(),3500);
 }
 
 function connectRealtime(){
-  S.socket = io(SERVER_URL, { transports:['websocket','polling'] });
-  S.socket.on('connect', ()=> S.socket.emit('user:join', {name:S.nick, av:S.av}) );
-  S.socket.on('connect_error', ()=> toast('⚠️','مش قادر يتصل بالسيرفر') );
-  S.socket.on('user:error', m => { $('#nerr').textContent = m; $('#nerr').classList.add('on'); });
+  if(S.socket){ try{ S.socket.disconnect(); }catch(e){} }
+
+  S.socket = io(SERVER_URL, {
+    transports: ['websocket','polling'],
+    reconnection: true,
+    reconnectionAttempts: Infinity,
+    reconnectionDelay: 1000,
+    reconnectionDelayMax: 8000,
+    timeout: 20000,
+    forceNew: true
+  });
+
+  S.socket.on('connect', ()=>{
+    console.log('[socket] connected', S.socket.id);
+    S.socket.emit('user:join', {name:S.nick, av:S.av});
+    startHeartbeat();
+    if(S.joined) toast('🔄','اتصلت تاني بالسيرفر');
+  });
+
+  S.socket.on('disconnect', (reason)=>{
+    console.warn('[socket] disconnect', reason);
+    stopHeartbeat();
+    if(S.joined) toast('⚠️','الاتصال انقطع... بيحاول يرجع');
+  });
+
+  S.socket.on('connect_error', (err)=>{
+    console.warn('[socket] connect_error', err.message);
+    toast('⚠️','مش قادر يتصل بالسيرفر');
+  });
+
+  S.socket.on('user:error', m=>{
+    $('#nerr').textContent=m;
+    $('#nerr').classList.add('on');
+  });
+
   S.socket.on('user:joined', ()=>{
-    $('#mn').textContent = S.nick;
-    $('#mav').textContent = S.av;
-    $('#entry').style.display = 'none';
+    S.joined=true;
+    $('#mn').textContent=S.nick;
+    $('#mav').textContent=S.av;
+    $('#entry').style.display='none';
     $('#app').classList.add('on');
     toast('✨','أهلاً يا '+S.nick);
   });
+
   S.socket.on('users:list', list=>{
     S.friends = list
-      .filter(f => f.n.toLowerCase() !== S.nick.toLowerCase())
+      .filter(f=>f.n.toLowerCase()!==S.nick.toLowerCase())
       .map(f=>{
-        const old = S.friends.find(x=>x.n.toLowerCase()===f.n.toLowerCase());
-        return {...f, added: old?.added || false};
+        const old=S.friends.find(x=>x.n.toLowerCase()===f.n.toLowerCase());
+        return {...f, added: old?.added||false};
       });
     renderFriends();
   });
-  S.socket.on('invite:sent', x => toast('📨','الدعوة اتبعتت لـ '+x.to));
-  S.socket.on('invite:error', m => toast('⚠️', m));
+
+  S.socket.on('invite:sent', x=> toast('📨','الدعوة اتبعتت لـ '+x.to));
+  S.socket.on('invite:error', m=> toast('⚠️',m));
   S.socket.on('invite:received', x=>{
-    if(confirm(x.from.n + ' دعاك. تقبل؟')){
-      S.socket.emit('invite:accept', {from: x.from.n});
+    if(confirm(x.from.n+' دعاك. تقبل؟')){
+      S.socket.emit('invite:accept',{from:x.from.n});
       addFriend(x.from);
     }
   });
-  S.socket.on('friend:added', u=>{ addFriend(u); toast('🐾', u.n+' بقى صاحبك'); });
+  S.socket.on('friend:added', u=>{ addFriend(u); toast('🐾',u.n+' بقى صاحبك'); });
+
   S.socket.on('chat:message', x=>{
     if(!S.chats[x.from]) S.chats[x.from]=[];
     S.chats[x.from].push(x.message);
     if(S.active===x.from) renderMsgs();
-    else toast('💬','رسالة جديدة من '+x.from);
+    else toast('💬','رسالة من '+x.from);
   });
   S.socket.on('chat:sent', x=>{
     if(!S.chats[x.to]) S.chats[x.to]=[];
@@ -383,29 +421,37 @@ function connectRealtime(){
     S.chats[x.to].push({author:x.file.author,av:x.file.av,fileName:x.file.fileName,mime:x.file.mime,data:x.file.data,time:x.file.time,own:true});
     if(S.active===x.to) renderMsgs();
   });
-  S.socket.on('file:error', m => toast('⚠️', m));
+  S.socket.on('file:error', m=> toast('⚠️',m));
 
-  // ===== CALL EVENTS =====
-  S.socket.on('call:incoming', x => incomingCall(x.from));
+  S.socket.on('call:incoming', x=>{
+    console.log('[call] incoming from', x.from);
+    incomingCall(x.from);
+  });
   S.socket.on('call:accept', async x=>{
-    if(x.from === S.callWith) await makeOffer();
+    console.log('[call] accept from', x.from);
+    if(x.from===S.callWith) await makeOffer();
   });
   S.socket.on('call:reject', x=>{
     toast('📵', x.from+' رفض المكالمة');
     cleanupCall(false);
   });
-  S.socket.on('call:offer', async x => await handleOffer(x));
+  S.socket.on('call:offer', async x=>{
+    console.log('[call] offer from', x.from);
+    await handleOffer(x);
+  });
   S.socket.on('call:answer', async x=>{
-    if(S.pc) await S.pc.setRemoteDescription(x.sdp);
+    console.log('[call] answer from', x.from);
+    if(S.pc && x.sdp){
+      try{
+        if(S.pc.signalingState!=='stable') await S.pc.setRemoteDescription(x.sdp);
+        else if(!S.pc.currentRemoteDescription) await S.pc.setRemoteDescription(x.sdp);
+      }catch(e){ console.warn('setRemote answer', e); }
+    }
   });
   S.socket.on('call:ice', async x=>{
-    if(!x?.candidate) return;
-    if(!S.pc || !S.pc.remoteDescription){
-      if(!S.pendingIce) S.pendingIce=[];
-      S.pendingIce.push(x.candidate);
-      return;
+    if(S.pc && x.candidate){
+      try{ await S.pc.addIceCandidate(x.candidate); }catch(e){}
     }
-    try{ await S.pc.addIceCandidate(x.candidate); }catch(e){ console.warn('ICE failed',e); }
   });
   S.socket.on('call:hangup', x=>{
     toast('📞', x.from+' قفل المكالمة');
@@ -413,545 +459,547 @@ function connectRealtime(){
   });
 }
 
+function startHeartbeat(){
+  stopHeartbeat();
+  S.heartbeat = setInterval(()=>{
+    if(S.socket && S.socket.connected){
+      S.socket.emit('ping', {t:Date.now()});
+    }
+  }, 20000);
+}
+function stopHeartbeat(){
+  if(S.heartbeat){ clearInterval(S.heartbeat); S.heartbeat=null; }
+}
+
 function addFriend(u){
   if(!u) return;
-  let f = S.friends.find(x=>x.n.toLowerCase()===u.n.toLowerCase());
-  if(f) f.added = true;
+  let f=S.friends.find(x=>x.n.toLowerCase()===u.n.toLowerCase());
+  if(f) f.added=true;
   else S.friends.push({...u, added:true});
   renderFriends();
 }
 
 function enter(){
-  const n = $('#nick').value.trim().slice(0,16);
-  if(n.length < 2) return;
-  S.nick = n;
+  const n=$('#nick').value.trim().slice(0,16);
+  if(n.length<2) return;
+  S.nick=n;
   connectRealtime();
 }
 
 function renderFriends(){
-  const q = ($('#fsearch').value || '').toLowerCase();
-  const list = S.friends.filter(f => !q || f.n.toLowerCase().includes(q));
-  const el = $('#flist');
-  if(!list.length){
-    el.innerHTML = '<div class="empty">مفيش صحاب لسه.<br>ادعُ حد بالاسم.</div>';
-    return;
-  }
-  el.innerHTML = list.map(f=>`
+  const q=($('#fsearch').value||'').toLowerCase();
+  const list=S.friends.filter(f=>!q||f.n.toLowerCase().includes(q));
+  const el=$('#flist');
+  if(!list.length){ el.innerHTML='<div class="empty">مفيش صحاب لسه.<br>ادعُ حد بالاسم.</div>'; return; }
+  el.innerHTML=list.map(f=>`
     <div class="si ${S.active===f.n?'active':''}" data-n="${f.n}">
       <span class="sa">${f.a}</span>
       <div><div class="sn">${f.n}</div><div class="ssub">${f.online?'أونلاين':'أوفلاين'}</div></div>
       <span class="dot ${f.online?'':'off'}"></span>
     </div>`).join('');
-  el.querySelectorAll('.si').forEach(item=>{
-    item.onclick = ()=> openChat(item.dataset.n);
-  });
+  el.querySelectorAll('.si').forEach(item=>{ item.onclick=()=>openChat(item.dataset.n); });
 }
 
 function openChat(name){
-  S.active = name;
+  S.active=name;
   if(!S.chats[name]) S.chats[name]=[];
-  $('#rtitle').textContent = name;
-  $('#rsub').textContent = 'محادثة خاصة';
-  $('#bcall').disabled = false;
-  $('#mi').disabled = false;
-  $('#bsend').disabled = false;
+  $('#rtitle').textContent=name;
+  $('#rsub').textContent='محادثة خاصة';
+  $('#bcall').disabled=false;
+  $('#mi').disabled=false;
+  $('#bsend').disabled=false;
   renderFriends();
   renderMsgs();
 }
 
 function renderMsgs(){
-  const list = S.active ? (S.chats[S.active]||[]) : [];
-  let h = '';
-  if(!S.active){
-    h = '<div class="msg sys"><div class="mi">✨</div><div><div class="ma">Realm Guide</div><div class="mt">ادعُ صاحب بالاسم بالظبط عشان تبدأ.</div></div></div>';
-  }else if(!list.length){
-    h = `<div class="msg sys"><div class="mi">✨</div><div><div class="ma">Realm Guide</div><div class="mt">محادثة مع ${esc(S.active)}. الرسائل مؤقتة.</div></div></div>`;
-  }
+  const list=S.active?(S.chats[S.active]||[]):[];
+  let h='';
+  if(!S.active) h='<div class="msg sys"><div class="mi">✨</div><div><div class="ma">Realm Guide</div><div class="mt">ادعُ صاحب بالاسم بالظبط عشان تبدأ.</div></div></div>';
+  else if(!list.length) h=`<div class="msg sys"><div class="mi">✨</div><div><div class="ma">Realm Guide</div><div class="mt">محادثة مع ${esc(S.active)}. الرسائل مؤقتة.</div></div></div>`;
   list.forEach(m=>{
-    let body = m.fileName
+    let body=m.fileName
       ? `<button class="btn2 dl" data-file="${encodeURIComponent(m.data)}" data-name="${encodeURIComponent(m.fileName)}">📎 ${esc(m.fileName)}</button>`
-      : m.img ? `<img class="mimg" src="${m.img}">`
-      : m.vid ? `<video class="mvid" src="${m.vid}" controls></video>`
+      : m.img?`<img class="mimg" src="${m.img}">`
+      : m.vid?`<video class="mvid" src="${m.vid}" controls></video>`
       : `<div class="mt">${esc(m.text)}</div>`;
-    h += `<div class="msg ${m.own?'own':''}"><div class="mi">${m.av}</div><div><div class="ma">${esc(m.author)}</div>${body}<div class="mtime">${m.time}</div></div></div>`;
+    h+=`<div class="msg ${m.own?'own':''}"><div class="mi">${m.av}</div><div><div class="ma">${esc(m.author)}</div>${body}<div class="mtime">${m.time}</div></div></div>`;
   });
-  $('#msgs').innerHTML = h;
-  $('#msgs').scrollTop = $('#msgs').scrollHeight;
+  $('#msgs').innerHTML=h;
+  $('#msgs').scrollTop=$('#msgs').scrollHeight;
   $$('.dl').forEach(b=>{
-    b.onclick = ()=>{
-      const a = document.createElement('a');
-      a.href = decodeURIComponent(b.dataset.file);
-      a.download = decodeURIComponent(b.dataset.name);
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
+    b.onclick=()=>{
+      const a=document.createElement('a');
+      a.href=decodeURIComponent(b.dataset.file);
+      a.download=decodeURIComponent(b.dataset.name);
+      document.body.appendChild(a); a.click(); a.remove();
     };
   });
 }
 
 function sendMsg(){
-  if(!S.active || !S.socket) return;
-  const t = $('#mi').value.trim();
+  if(!S.active||!S.socket||!S.socket.connected){ toast('⚠️','مش متصل بالسيرفر'); return; }
+  const t=$('#mi').value.trim();
   if(!t) return;
-  S.socket.emit('chat:message', {to:S.active, message:t});
-  $('#mi').value = '';
+  S.socket.emit('chat:message',{to:S.active, message:t});
+  $('#mi').value='';
 }
 
 function handleFile(inp){
-  if(!S.active || !inp.files[0]) return;
-  const f = inp.files[0];
-  if(f.size > 20*1024*1024){ toast('⚠️','أقصى حجم 20 ميجا'); inp.value=''; return; }
-  const r = new FileReader();
-  r.onload = ()=> S.socket.emit('chat:file', {to:S.active, name:f.name, type:f.type, data:r.result});
+  if(!S.active||!inp.files[0]) return;
+  if(!S.socket||!S.socket.connected){ toast('⚠️','مش متصل'); return; }
+  const f=inp.files[0];
+  if(f.size>20*1024*1024){ toast('⚠️','أقصى حجم 20 ميجا'); inp.value=''; return; }
+  const r=new FileReader();
+  r.onload=()=>S.socket.emit('chat:file',{to:S.active, name:f.name, type:f.type, data:r.result});
   r.readAsDataURL(f);
-  inp.value = '';
+  inp.value='';
 }
 
 function sendInvite(){
-  const n = $('#iinput').value.trim();
-  if(n.length < 2) return;
-  if(n.toLowerCase() === S.nick.toLowerCase()) return toast('⚠️','مش هتدعو نفسك');
-  S.socket.emit('invite:send', {to:n});
+  const n=$('#iinput').value.trim();
+  if(n.length<2) return;
+  if(n.toLowerCase()===S.nick.toLowerCase()) return toast('⚠️','مش هتدعو نفسك');
+  if(!S.socket||!S.socket.connected) return toast('⚠️','مش متصل');
+  S.socket.emit('invite:send',{to:n});
   $('#minv').classList.add('h');
 }
 
-/* ===================== CALL LOGIC ===================== */
-
 function showCallUI(){
   $('#callbar').classList.add('on');
-  $('#cname').textContent='مع '+(S.callWith||'...');
+  $('#cname').textContent='مع '+S.callWith;
+  setVideoMode('normal');
   $('#videofloat').classList.add('on');
-  $('#videofloat').classList.remove('mini');
-  S.videoMini=false;
-  $('#vtitle').textContent='مكالمة مع '+(S.callWith||'...');
-  updateMuteBtn(); updateDeafBtn(); updateCamBtn(); updateStreamBtn();
-  // الشات يفضل شغال أثناء المكالمة.
-  $('#mi').disabled=!S.active;
-  $('#bsend').disabled=!S.active;
+  $('#vtitle').textContent='مكالمة مع '+S.callWith;
+  $('#vstatus').textContent='جاري الاتصال...';
+  updateAllBtns();
 }
 
 function hideCallUI(){
   $('#callbar').classList.remove('on');
-  $('#videofloat').classList.remove('on','mini');
+  $('#videofloat').classList.remove('on','mini','expanded','fullscreen');
+  S.videoMode='normal';
+}
+
+function setVideoMode(mode){
+  const box=$('#videofloat');
+  box.classList.remove('mini','expanded','fullscreen');
+  S.videoMode=mode;
+  if(mode==='mini') box.classList.add('mini');
+  else if(mode==='expanded') box.classList.add('expanded');
+  else if(mode==='fullscreen') box.classList.add('fullscreen');
+
+  $('#cmin').textContent = mode==='mini' ? '⬆️ تكبير' : '⬇️ تصغير';
+  $('#cexpand').textContent = mode==='fullscreen' ? '⛶ خروج' : (mode==='expanded' ? '⛶ ملء الشاشة' : '⛶ تكبير');
+  $('#vmax').textContent = mode==='mini' ? '⬆️' : '⬇️';
 }
 
 async function startCall(){
-  if(!S.active||!S.socket||S.pc)return;
+  if(!S.active||!S.socket||!S.socket.connected){ toast('⚠️','مش متصل'); return; }
+  if(S.pc||S.callWith){ toast('⚠️','أنت أصلاً في مكالمة'); return; }
   S.callWith=S.active;
-  showCallUI();
-  $('#vtitle').textContent='بجهز المايك والكاميرا...';
-  const ok=await preparePeer();
-  if(!ok){
-    cleanupCall(false);
-    return;
-  }
-  // جهزنا الـPeerConnection قبل إرسال الدعوة لتفادي Race في الـWebRTC.
   S.socket.emit('call:invite',{to:S.callWith});
+  showCallUI();
   $('#vtitle').textContent='بتتصل بـ '+S.callWith+'...';
+  $('#vstatus').textContent='في انتظار الرد...';
   toast('📞','بتتصل بـ '+S.callWith);
 }
 
 function incomingCall(from){
-  if(!from||!from.n)return;
-  S.incomingFrom=from.n;
-  $('#incAv').textContent=from.a||'📞';
-  $('#incName').textContent=from.n+' بيكلمك';
+  const name = (typeof from==='object' && from.n) ? from.n : from;
+  const av = (typeof from==='object' && from.a) ? from.a : '📞';
+  if(S.pc||S.callWith){
+    if(S.socket) S.socket.emit('call:reject',{to:name});
+    return;
+  }
+  S.incomingFrom=name;
+  $('#incAv').textContent=av;
+  $('#incName').textContent=name+' بيكلمك';
   $('#incoming').classList.add('on');
+  try{
+    const ctx=new (window.AudioContext||window.webkitAudioContext)();
+    const o=ctx.createOscillator(); const g=ctx.createGain();
+    o.connect(g); g.connect(ctx.destination);
+    o.frequency.value=880; g.gain.value=0.08;
+    o.start(); setTimeout(()=>{o.stop();ctx.close();},300);
+  }catch(e){}
 }
 
 async function acceptIncoming(){
   const from=S.incomingFrom;
-  if(!from||!S.socket)return;
+  if(!from){ $('#incoming').classList.remove('on'); return; }
   $('#incoming').classList.remove('on');
-  S.callWith=from;
-  showCallUI();
-  $('#vtitle').textContent='بجهز الاتصال...';
-
-  // جهز الميديا قبل accept حتى الـoffer ما يوصلش قبل ما نبقى جاهزين.
-  const ok=await preparePeer();
-  if(!ok){
-    S.socket.emit('call:reject',{to:from});
-    cleanupCall(false);
-    toast('⚠️','لازم تسمح بالمايك عشان تقبل المكالمة');
-    return;
-  }
-  S.socket.emit('call:accept',{to:from});
   S.incomingFrom=null;
+  S.callWith=from;
+  try{
+    await preparePeer();
+    if(S.socket) S.socket.emit('call:accept',{to:from});
+    showCallUI();
+    $('#vstatus').textContent='جاري الاتصال...';
+  }catch(e){
+    console.error(e);
+    toast('⚠️','فشل قبول المكالمة');
+    cleanupCall(false);
+  }
 }
 
 function rejectIncoming(){
-  if(S.incomingFrom&&S.socket)S.socket.emit('call:reject',{to:S.incomingFrom});
+  if(S.incomingFrom && S.socket) S.socket.emit('call:reject',{to:S.incomingFrom});
   S.incomingFrom=null;
   $('#incoming').classList.remove('on');
 }
 
-function buildPeerConnection(){
-  const pc=new RTCPeerConnection({
-    iceServers:[
+async function preparePeer(){
+  if(S.pc) return S.pc;
+
+  S.pc = new RTCPeerConnection({
+    iceServers: [
       {urls:'stun:stun.l.google.com:19302'},
-      {urls:'stun:stun1.l.google.com:19302'}
+      {urls:'stun:stun1.l.google.com:19302'},
+      {urls:'stun:stun2.l.google.com:19302'}
     ]
   });
 
-  pc.onicecandidate=e=>{
-    if(e.candidate&&S.socket&&S.callWith)S.socket.emit('call:ice',{to:S.callWith,candidate:e.candidate});
-  };
-
-  pc.ontrack=e=>{
-    const remote=$('#remoteVideo');
-    let stream=remote.srcObject;
-    if(!(stream instanceof MediaStream))stream=new MediaStream();
-    if(!stream.getTracks().some(t=>t.id===e.track.id))stream.addTrack(e.track);
-    remote.srcObject=stream;
-    remote.muted=!!S.deaf;
-    remote.volume=S.deaf?0:1;
-    remote.play().catch(()=>{});
-  };
-
-  pc.onconnectionstatechange=()=>{
-    if(!S.pc||pc!==S.pc)return;
-    const st=pc.connectionState;
-    if(st==='connected'){
-      clearTimeout(S.disconnectTimer);
-      $('#vtitle').textContent='مكالمة مع '+S.callWith;
-      toast('✅','المكالمة اتصلت — الشات شغال معاك');
-    }else if(st==='failed'){
-      toast('⚠️','اتصال المكالمة فشل. جرّب المكالمة تاني');
-      cleanupCall(false);
-    }else if(st==='disconnected'){
-      clearTimeout(S.disconnectTimer);
-      S.disconnectTimer=setTimeout(()=>{
-        if(S.pc&&S.pc.connectionState==='disconnected')cleanupCall(false);
-      },5000);
+  S.pc.onicecandidate = e=>{
+    if(e.candidate && S.socket && S.callWith){
+      S.socket.emit('call:ice',{to:S.callWith, candidate:e.candidate});
     }
   };
 
-  pc.oniceconnectionstatechange=()=>{
-    if(!S.pc||pc!==S.pc)return;
-    if(pc.iceConnectionState==='failed')toast('⚠️','تعذر إنشاء اتصال مباشر بين الجهازين');
+  S.pc.ontrack = e=>{
+    console.log('[webrtc] ontrack', e.track.kind);
+    const remote=$('#remoteVideo');
+    if(e.streams && e.streams[0]){
+      remote.srcObject = e.streams[0];
+    }else{
+      if(!remote.srcObject) remote.srcObject = new MediaStream();
+      remote.srcObject.addTrack(e.track);
+    }
+    remote.muted = !!S.deaf;
+    remote.play().catch(()=>{});
+    $('#vstatus').textContent='متصل ✓';
   };
 
-  return pc;
-}
+  S.pc.onconnectionstatechange = ()=>{
+    if(!S.pc) return;
+    const st=S.pc.connectionState;
+    console.log('[webrtc] state', st);
+    if(st==='connected'){
+      $('#vstatus').textContent='متصل ✓';
+      $('#vtitle').textContent='مكالمة مع '+S.callWith;
+      toast('✅','المكالمة اتصلت');
+    }
+    if(st==='failed'){
+      toast('⚠️','فشل الاتصال — جرب تاني');
+      cleanupCall(true);
+    }
+    if(st==='disconnected'){
+      $('#vstatus').textContent='انقطع مؤقتاً...';
+    }
+    if(st==='closed'){
+      cleanupCall(false);
+    }
+  };
 
-async function preparePeer(){
-  if(S.pc)return true;
-  if(!window.RTCPeerConnection||!navigator.mediaDevices){
-    toast('⚠️','المتصفح مش بيدعم المكالمات أو الميديا');
-    return false;
-  }
-
-  S.pendingIce=[];
-  S.pc=buildPeerConnection();
-
-  // Transceivers من البداية = الشير يشتغل حتى لو الكاميرا مش متاحة.
   try{
-    S.audioTransceiver=S.pc.addTransceiver('audio',{direction:'sendrecv'});
-    S.videoTransceiver=S.pc.addTransceiver('video',{direction:'sendrecv'});
-  }catch(e){console.warn('transceiver error',e);}
-
-  let audioTrack=null;
-  let videoTrack=null;
-
-  // افتح المايك لوحده.
-  try{
-    const a=await navigator.mediaDevices.getUserMedia({
-      audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true},
-      video:false
+    S.localStream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true
+      },
+      video: {
+        width: {ideal: 640},
+        height: {ideal: 480},
+        facingMode: 'user'
+      }
     });
-    audioTrack=a.getAudioTracks()[0]||null;
-  }catch(e){console.warn('microphone permission failed',e);}
-
-  // افتح الكاميرا لوحدها؛ فشل الكاميرا لا يمنع الصوت أو الشير.
-  try{
-    const v=await navigator.mediaDevices.getUserMedia({
-      audio:false,
-      video:{width:{ideal:640,max:1280},height:{ideal:480,max:720},frameRate:{ideal:30,max:60},facingMode:'user'}
-    });
-    videoTrack=v.getVideoTracks()[0]||null;
   }catch(e){
-    S.camOn=false;
-    console.warn('camera permission failed',e);
+    console.warn('getUserMedia video failed, try audio only', e);
+    try{
+      S.localStream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation:true, noiseSuppression:true, autoGainControl:true },
+        video: false
+      });
+      S.camOn=false;
+    }catch(err){
+      toast('⚠️','المتصفح رفض المايك/الكاميرا — لازم توافق');
+      cleanupCall(false);
+      throw err;
+    }
   }
 
-  if(!audioTrack&&!videoTrack){
-    try{S.pc.close();}catch(e){}
-    S.pc=null;
-    toast('⚠️','اسمح بالمايك من المتصفح عشان تبدأ المكالمة');
-    return false;
-  }
+  S.localStream.getTracks().forEach(t=>{
+    t.enabled = true;
+    S.pc.addTrack(t, S.localStream);
+  });
 
-  S.localStream=new MediaStream();
-  if(audioTrack)S.localStream.addTrack(audioTrack);
-  if(videoTrack)S.localStream.addTrack(videoTrack);
-
-  try{
-    if(S.audioTransceiver&&audioTrack)await S.audioTransceiver.sender.replaceTrack(audioTrack);
-    if(S.videoTransceiver&&videoTrack)await S.videoTransceiver.sender.replaceTrack(videoTrack);
-    if(!S.audioTransceiver&&audioTrack)S.pc.addTrack(audioTrack,S.localStream);
-    if(!S.videoTransceiver&&videoTrack)S.pc.addTrack(videoTrack,S.localStream);
-  }catch(e){
-    console.error('track setup failed',e);
-    cleanupCall(false);
-    toast('⚠️','حصلت مشكلة في تشغيل الميديا');
-    return false;
-  }
-
-  S.audioSender=S.audioTransceiver?.sender||null;
-  S.videoSender=S.videoTransceiver?.sender||null;
-  S.camOn=!!videoTrack;
   S.muted=false;
   S.deaf=false;
-  $('#localVideo').srcObject=S.localStream;
-  $('#localVideo').muted=true;
-  $('#localVideo').play().catch(()=>{});
-  updateMuteBtn(); updateDeafBtn(); updateCamBtn(); updateStreamBtn();
-  return true;
-}
+  S.localStream.getAudioTracks().forEach(t=> t.enabled=true);
 
-async function flushPendingIce(){
-  if(!S.pc||!S.pc.remoteDescription||!S.pendingIce?.length)return;
-  const pending=S.pendingIce.splice(0);
-  for(const candidate of pending){
-    try{await S.pc.addIceCandidate(candidate);}catch(e){console.warn('pending ICE failed',e);}
-  }
+  $('#localVideo').srcObject = S.localStream;
+  $('#localVideo').muted = true;
+  $('#remoteVideo').muted = false;
+
+  updateAllBtns();
+  return S.pc;
 }
 
 async function makeOffer(){
-  if(!S.callWith||!S.socket)return;
-  const ok=await preparePeer();
-  if(!ok||!S.pc)return;
+  if(S.makingOffer) return;
+  S.makingOffer=true;
   try{
-    const offer=await S.pc.createOffer({offerToReceiveAudio:true,offerToReceiveVideo:true});
+    await preparePeer();
+    if(!S.pc) return;
+    const offer = await S.pc.createOffer({ offerToReceiveAudio:true, offerToReceiveVideo:true });
     await S.pc.setLocalDescription(offer);
-    S.socket.emit('call:offer',{to:S.callWith,sdp:S.pc.localDescription});
+    if(S.socket && S.callWith){
+      S.socket.emit('call:offer',{to:S.callWith, sdp:S.pc.localDescription});
+    }
   }catch(e){
-    console.error(e);
-    toast('⚠️','مش قادر أبدأ اتصال المكالمة');
+    console.error('makeOffer', e);
+    toast('⚠️','فشل إنشاء المكالمة');
+  }finally{
+    S.makingOffer=false;
   }
 }
 
 async function handleOffer(x){
-  if(!x?.sdp)return;
-  S.callWith=x.from;
-  const ok=await preparePeer();
-  if(!ok||!S.pc)return;
   try{
+    S.callWith = x.from;
+    await preparePeer();
+    if(!S.pc) return;
+
+    if(S.pc.signalingState === 'have-local-offer'){
+      await S.pc.setLocalDescription({type:'rollback'});
+    }
+
     await S.pc.setRemoteDescription(x.sdp);
-    await flushPendingIce();
-    const answer=await S.pc.createAnswer();
+    const answer = await S.pc.createAnswer();
     await S.pc.setLocalDescription(answer);
-    S.socket.emit('call:answer',{to:S.callWith,sdp:S.pc.localDescription});
+    if(S.socket) S.socket.emit('call:answer',{to:S.callWith, sdp:S.pc.localDescription});
     showCallUI();
+    $('#vstatus').textContent='جاري الاتصال...';
   }catch(e){
-    console.error(e);
-    toast('⚠️','حصل خطأ في إعداد الاتصال');
+    console.error('handleOffer', e);
+    toast('⚠️','فشل استقبال المكالمة');
     cleanupCall(false);
   }
 }
 
 function cleanupCall(notify){
-  const peer=S.callWith;
-  if(notify&&peer&&S.socket)S.socket.emit('call:hangup',{to:peer});
-  clearTimeout(S.disconnectTimer);
-  if(S.screenStream){S.screenStream.getTracks().forEach(t=>t.stop());S.screenStream=null;}
-  if(S.localStream){S.localStream.getTracks().forEach(t=>t.stop());S.localStream=null;}
-  if(S.pc){try{S.pc.close();}catch(e){}S.pc=null;}
+  if(notify && S.callWith && S.socket && S.socket.connected){
+    try{ S.socket.emit('call:hangup',{to:S.callWith}); }catch(e){}
+  }
+  if(S.screenStream){
+    S.screenStream.getTracks().forEach(t=>{ try{t.stop();}catch(e){} });
+    S.screenStream=null;
+  }
+  if(S.localStream){
+    S.localStream.getTracks().forEach(t=>{ try{t.stop();}catch(e){} });
+    S.localStream=null;
+  }
+  if(S.pc){
+    try{ S.pc.close(); }catch(e){}
+    S.pc=null;
+  }
   $('#localVideo').srcObject=null;
   $('#remoteVideo').srcObject=null;
-  $('#remoteVideo').muted=false;
-  $('#remoteVideo').volume=1;
   hideCallUI();
   S.callWith=null;
   S.incomingFrom=null;
-  S.pendingIce=[];
-  S.audioTransceiver=null; S.videoTransceiver=null;
-  S.audioSender=null; S.videoSender=null;
-  S.muted=false; S.deaf=false; S.camOn=true; S.sharing=false; S.videoMini=false;
-  $('#mi').disabled=!S.active;
-  $('#bsend').disabled=!S.active;
+  S.muted=false;
+  S.deaf=false;
+  S.camOn=true;
+  S.sharing=false;
+  S.makingOffer=false;
+  $('#incoming').classList.remove('on');
+}
+
+function updateAllBtns(){
   updateMuteBtn(); updateDeafBtn(); updateCamBtn(); updateStreamBtn();
 }
 
-/* ===== MUTE / DEAFEN / CAM / STREAM ===== */
-
 function updateMuteBtn(){
-  const btn=$('#cmute'); if(!btn)return;
-  btn.textContent=S.muted?'🎤 مايك: Off':'🎤 مايك: On';
-  btn.classList.toggle('off',S.muted);
-  btn.classList.toggle('on-state',!S.muted);
-  btn.title=S.muted?'اضغط لتشغيل المايك':'اضغط لكتم المايك';
+  const btn=$('#cmute');
+  if(S.muted){ btn.textContent='🎤 مايك: Off'; btn.classList.add('off'); btn.classList.remove('on-state'); }
+  else{ btn.textContent='🎤 مايك: On'; btn.classList.remove('off'); btn.classList.add('on-state'); }
 }
-
 function updateDeafBtn(){
-  const btn=$('#cdeaf'); if(!btn)return;
-  btn.textContent=S.deaf?'🔇 ديفن: On':'🔊 ديفن: Off';
-  btn.classList.toggle('off',S.deaf);
-  btn.classList.toggle('on-state',!S.deaf);
-  btn.title=S.deaf?'اضغط لتسمع الطرف الآخر':'اضغط لإيقاف صوت الطرف الآخر';
+  const btn=$('#cdeaf');
+  if(S.deaf){ btn.textContent='🔇 ديفن: On'; btn.classList.add('off'); btn.classList.remove('on-state'); }
+  else{ btn.textContent='🔊 ديفن: Off'; btn.classList.remove('off'); btn.classList.add('on-state'); }
 }
-
 function updateCamBtn(){
-  const btn=$('#ccam'); if(!btn)return;
-  btn.textContent=S.camOn?'📷 كاميرا: On':'📷 كاميرا: Off';
-  btn.classList.toggle('off',!S.camOn);
-  btn.classList.toggle('on-state',S.camOn);
+  const btn=$('#ccam');
+  if(S.camOn){ btn.textContent='📷 كاميرا: On'; btn.classList.remove('off'); btn.classList.add('on-state'); }
+  else{ btn.textContent='📷 كاميرا: Off'; btn.classList.add('off'); btn.classList.remove('on-state'); }
 }
-
 function updateStreamBtn(){
-  const btn=$('#cstream'); if(!btn)return;
-  btn.textContent=S.sharing?'🛑 وقف الشير':'🖥️ شير سكرين';
-  btn.classList.toggle('stream-on',S.sharing);
+  const btn=$('#cstream');
+  if(S.sharing){ btn.textContent='🛑 وقف الشير'; btn.classList.add('stream-on'); }
+  else{ btn.textContent='🖥️ شير سكرين'; btn.classList.remove('stream-on'); }
 }
 
 function toggleMute(){
-  if(!S.localStream)return;
-  const tracks=S.localStream.getAudioTracks();
-  if(!tracks.length){toast('⚠️','مفيش مايك متاح في المكالمة');return;}
+  if(!S.localStream) return;
   S.muted=!S.muted;
-  tracks.forEach(t=>t.enabled=!S.muted);
+  S.localStream.getAudioTracks().forEach(t=> t.enabled=!S.muted);
+  if(S.screenStream){
+    S.screenStream.getAudioTracks().forEach(t=> t.enabled=!S.muted);
+  }
   updateMuteBtn();
-  toast(S.muted?'🔇':'🎤',S.muted?'المايك: Off':'المايك: On');
+  toast(S.muted?'🔇':'🎤', S.muted?'المايك اتقفل':'المايك اشتغل');
 }
 
 function toggleDeaf(){
   S.deaf=!S.deaf;
   const remote=$('#remoteVideo');
-  if(remote){remote.muted=S.deaf;remote.volume=S.deaf?0:1;}
+  if(remote) remote.muted = S.deaf;
+  if(S.pc){
+    S.pc.getReceivers().forEach(r=>{
+      if(r.track && r.track.kind==='audio') r.track.enabled = !S.deaf;
+    });
+  }
   updateDeafBtn();
-  toast(S.deaf?'🔇':'🔊',S.deaf?'الديفن: On — مش هتسمع الطرف التاني':'الديفن: Off — الصوت شغال');
+  toast(S.deaf?'🔇':'🔊', S.deaf?'الديفن شغال (مش بتسمع)':'الديفن اتقفل (بتسمع)');
 }
 
 function toggleCam(){
-  if(!S.localStream){toast('⚠️','مفيش مكالمة شغالة');return;}
+  if(!S.localStream) return;
   const vids=S.localStream.getVideoTracks();
-  if(!vids.length){toast('⚠️','الكاميرا مش متاحة. تقدر تستخدم الشير سكرين بدلها');return;}
+  if(!vids.length){ toast('⚠️','مفيش كاميرا'); return; }
+  if(S.sharing){ toast('ℹ️','وقف الشير الأول عشان تتحكم في الكاميرا'); return; }
   S.camOn=!S.camOn;
-  vids.forEach(t=>t.enabled=S.camOn);
+  vids.forEach(t=> t.enabled=S.camOn);
   updateCamBtn();
-  toast(S.camOn?'📷':'🚫',S.camOn?'الكاميرا: On':'الكاميرا: Off');
+  toast(S.camOn?'📷':'🚫', S.camOn?'الكاميرا اشتغلت':'الكاميرا اتقفلت');
 }
 
 async function toggleShare(){
-  if(!S.pc||!S.callWith){toast('⚠️','ابدأ المكالمة الأول');return;}
-  if(!navigator.mediaDevices?.getDisplayMedia){toast('⚠️','المتصفح مش بيدعم Screen Share');return;}
-  if(S.sharing&&S.screenStream){await stopShare();return;}
+  if(!S.pc) return;
+
+  if(S.sharing && S.screenStream){
+    await stopShare();
+    return;
+  }
 
   try{
-    let stream;
-    try{
-      // audio:false أكثر توافقاً؛ النظام بيعرض picker طبيعي من غير ما يرفض بسبب System Audio.
-      stream=await navigator.mediaDevices.getDisplayMedia({
-        video:{cursor:'always',frameRate:{ideal:30,max:60}},
-        audio:false
-      });
-    }catch(first){
-      if(first?.name==='NotAllowedError'||first?.name==='AbortError')throw first;
-      stream=await navigator.mediaDevices.getDisplayMedia({video:true,audio:false});
+    S.screenStream = await navigator.mediaDevices.getDisplayMedia({
+      video: { cursor:'always' },
+      audio: true
+    });
+
+    const screenVideo = S.screenStream.getVideoTracks()[0];
+    if(!screenVideo) throw new Error('no video track');
+
+    const videoSender = S.pc.getSenders().find(s=> s.track && s.track.kind==='video');
+    if(videoSender){
+      await videoSender.replaceTrack(screenVideo);
+    }else{
+      S.pc.addTrack(screenVideo, S.screenStream);
     }
 
-    const screenTrack=stream.getVideoTracks()[0];
-    if(!screenTrack)throw new Error('no screen track');
-    const sender=S.videoSender||S.videoTransceiver?.sender||S.pc.getSenders().find(x=>x.track?.kind==='video');
-    if(!sender)throw new Error('no video sender');
+    const screenAudio = S.screenStream.getAudioTracks()[0];
+    if(screenAudio) screenAudio.enabled = !S.muted;
 
-    await sender.replaceTrack(screenTrack);
-    S.videoSender=sender;
-    S.screenStream=stream;
+    $('#localVideo').srcObject = S.screenStream;
     S.sharing=true;
-    $('#localVideo').srcObject=stream;
-    $('#localVideo').muted=true;
-    $('#localVideo').play().catch(()=>{});
     updateStreamBtn();
-    toast('🖥️','الشير اشتغل — الشات لسه شغال عادي');
-    screenTrack.onended=()=>{stopShare().catch(()=>{});};
+    setVideoMode('expanded');
+    toast('🖥️','شير سكرين اشتغل');
+
+    screenVideo.onended = ()=> stopShare();
   }catch(e){
-    console.warn('screen share failed',e);
+    console.warn(e);
+    toast('⚠️','الشير اتلغى أو المتصفح رفض');
     S.sharing=false;
     updateStreamBtn();
-    if(e?.name==='NotAllowedError'||e?.name==='AbortError')toast('⚠️','اختار شاشة/نافذة واسمح بالـScreen Share');
-    else if(e?.name==='NotReadableError')toast('⚠️','النظام مش قادر يشارك الشاشة حالياً. اقفل أي capture تاني وجرب');
-    else toast('⚠️','Screen Share فشل — جرّبه من زر الشير تاني');
   }
 }
 
 async function stopShare(){
-  const stream=S.screenStream;
+  if(!S.screenStream) return;
+  S.screenStream.getTracks().forEach(t=>{ try{t.stop();}catch(e){} });
   S.screenStream=null;
   S.sharing=false;
-  try{
-    const sender=S.videoSender||S.videoTransceiver?.sender||S.pc?.getSenders().find(x=>x.track?.kind==='video');
-    const camTrack=S.localStream?.getVideoTracks()[0]||null;
-    if(sender)await sender.replaceTrack(camTrack);
-    S.videoSender=sender||S.videoSender;
-  }catch(e){console.warn('restore camera failed',e);}
-  if(stream)stream.getTracks().forEach(t=>t.stop());
-  if(S.localStream){
-    $('#localVideo').srcObject=S.localStream;
-    $('#localVideo').muted=true;
-    $('#localVideo').play().catch(()=>{});
-  }else $('#localVideo').srcObject=null;
+
+  const camTrack = S.localStream?.getVideoTracks()[0];
+  const videoSender = S.pc?.getSenders().find(s=> s.track && s.track.kind==='video');
+  if(videoSender && camTrack){
+    try{ await videoSender.replaceTrack(camTrack); }catch(e){}
+  }
+  if(S.localStream) $('#localVideo').srcObject = S.localStream;
+
   updateStreamBtn();
   toast('🛑','الشير توقف');
 }
 
+function cycleExpand(){
+  if(S.videoMode==='normal') setVideoMode('expanded');
+  else if(S.videoMode==='expanded') setVideoMode('fullscreen');
+  else setVideoMode('normal');
+}
+
 function toggleMini(){
-  S.videoMini=!S.videoMini;
-  const box=$('#videofloat');
-  if(S.videoMini){box.classList.add('mini');$('#cmin').textContent='⬆️ تكبير';}
-  else{box.classList.remove('mini');$('#cmin').textContent='⬇️ تصغير';}
+  if(S.videoMode==='mini') setVideoMode('normal');
+  else setVideoMode('mini');
 }
 
 function leave(){
-  if(S.pc && S.callWith && S.socket) S.socket.emit('call:hangup',{to:S.callWith});
+  stopHeartbeat();
+  if(S.socket){ try{ S.socket.disconnect(); }catch(e){} }
+  S.friends=[]; S.chats={}; S.active=null; S.joined=false;
   cleanupCall(false);
-  if(S.socket) S.socket.disconnect();
-  S.friends = []; S.chats = {}; S.active = null;
   $('#mleave').classList.add('h');
   $('#app').classList.remove('on');
-  $('#entry').style.display = '';
-  $('#nick').value = '';
+  $('#entry').style.display='';
+  $('#nick').value='';
   ready();
   toast('☁️','كل الآثار اتمسحت');
 }
 
-/* ===== EVENTS ===== */
-$('#bsend').onclick = sendMsg;
-$('#mi').onkeydown = e=>{ if(e.key==='Enter'){ e.preventDefault(); sendMsg(); } };
-$('#bemoji').onclick = ()=>{
-  if(!S.active) return;
-  $('#mi').value += ['😺','✨','☁️','💖','🌟','🐱'][Math.floor(Math.random()*6)];
-  $('#mi').focus();
-};
-$('#bimg').onclick = ()=>{ if(S.active) $('#fimg').click(); };
-$('#bvid').onclick = ()=>{ if(S.active) $('#fvid').click(); };
-$('#bfile').onclick = ()=>{ if(S.active) $('#ffile').click(); };
-$('#fimg').onchange = ()=> handleFile($('#fimg'));
-$('#fvid').onchange = ()=> handleFile($('#fvid'));
-$('#ffile').onchange = ()=> handleFile($('#ffile'));
-$('#bcall').onclick = startCall;
-$('#binv').onclick = ()=>{ $('#minv').classList.remove('h'); $('#iinput').value=''; $('#iinput').focus(); };
-$('#bsinv').onclick = sendInvite;
-$('#fsearch').oninput = renderFriends;
-$('#bside').onclick = ()=> $('#side').classList.toggle('open');
-$('#bleave').onclick = ()=> $('#mleave').classList.remove('h');
-$('#bcleave').onclick = leave;
+$('#bsend').onclick=sendMsg;
+$('#mi').onkeydown=e=>{ if(e.key==='Enter'){ e.preventDefault(); sendMsg(); } };
+$('#bemoji').onclick=()=>{ if(!S.active) return; $('#mi').value+=['😺','✨','☁️','💖','🌟','🐱'][Math.floor(Math.random()*6)]; $('#mi').focus(); };
+$('#bimg').onclick=()=>{ if(S.active) $('#fimg').click(); };
+$('#bvid').onclick=()=>{ if(S.active) $('#fvid').click(); };
+$('#bfile').onclick=()=>{ if(S.active) $('#ffile').click(); };
+$('#fimg').onchange=()=>handleFile($('#fimg'));
+$('#fvid').onchange=()=>handleFile($('#fvid'));
+$('#ffile').onchange=()=>handleFile($('#ffile'));
+$('#bcall').onclick=startCall;
+$('#binv').onclick=()=>{ $('#minv').classList.remove('h'); $('#iinput').value=''; $('#iinput').focus(); };
+$('#bsinv').onclick=sendInvite;
+$('#fsearch').oninput=renderFriends;
+$('#bside').onclick=()=> $('#side').classList.toggle('open');
+$('#bleave').onclick=()=> $('#mleave').classList.remove('h');
+$('#bcleave').onclick=leave;
 
-$('#incAccept').onclick = acceptIncoming;
-$('#incReject').onclick = rejectIncoming;
+$('#incAccept').onclick=acceptIncoming;
+$('#incReject').onclick=rejectIncoming;
 
-$('#cmute').onclick = toggleMute;
-$('#cdeaf').onclick = toggleDeaf;
-$('#ccam').onclick = toggleCam;
-$('#cstream').onclick = toggleShare;
-$('#cmin').onclick = toggleMini;
-$('#cleave').onclick = ()=> cleanupCall(true);
+$('#cmute').onclick=toggleMute;
+$('#cdeaf').onclick=toggleDeaf;
+$('#ccam').onclick=toggleCam;
+$('#cstream').onclick=toggleShare;
+$('#cexpand').onclick=cycleExpand;
+$('#cmin').onclick=toggleMini;
+$('#cleave').onclick=()=>cleanupCall(true);
 
-$('#vmax').onclick = ()=>{ S.videoMini=false; $('#videofloat').classList.remove('mini'); $('#cmin').textContent='⬇️ تصغير'; };
-$('#vclose').onclick = ()=> toggleMini();
+$('#vexpand').onclick=cycleExpand;
+$('#vmax').onclick=toggleMini;
+$('#vclose').onclick=()=>cleanupCall(true);
 
-$$('[data-c]').forEach(b=> b.onclick = ()=>{ const id=b.dataset.c; if(id) $('#'+id).classList.add('h'); });
-$$('.mod').forEach(m=> m.onclick = e=>{ if(e.target===m) m.classList.add('h'); });
+$$('[data-c]').forEach(b=> b.onclick=()=>{ const id=b.dataset.c; if(id) $('#'+id).classList.add('h'); });
+$$('.mod').forEach(m=> m.onclick=e=>{ if(e.target===m) m.classList.add('h'); });
+
+document.addEventListener('visibilitychange', ()=>{
+  if(document.visibilityState==='visible' && S.socket && !S.socket.connected && S.joined){
+    toast('🔄','بيحاول يرجع الاتصال...');
+  }
+});
 
 })();
 </script>
