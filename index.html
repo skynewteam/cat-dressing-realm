@@ -170,6 +170,7 @@ html,body{height:100%;overflow:hidden;font-family:var(--f);background:var(--bg);
     <span class="cb-name" id="cname">في مكالمة</span>
     <button class="cb-btn on-state" id="cmute">🎤 مايك: On</button>
     <button class="cb-btn on-state" id="cdeaf">🔊 ديفن: Off</button>
+    <button class="cb-btn" id="cfixaudio">🔊 تشغيل الصوت</button>
     <button class="cb-btn" id="cstream">🖥️ شير سكرين</button>
     <button class="cb-btn on-state" id="ccam">📷 كاميرا: On</button>
     <button class="cb-btn" id="cwatch">▶ مشاهدة الاستريم</button>
@@ -564,6 +565,34 @@ function addRemoteTrack(track){
   }
 }
 
+function forceRemoteAudioPlay(){
+  try{
+    if(S.remoteAudioCtx && S.remoteAudioCtx.state==='suspended'){
+      S.remoteAudioCtx.resume().catch(()=>{});
+    }
+  }catch(e){}
+  const remote=$('#remoteVideo');
+  if(remote){
+    remote.muted = !!S.deaf;
+    remote.volume = S.deaf ? 0 : 1;
+    const p = remote.play();
+    if(p && p.catch) p.catch(()=>{});
+  }
+  // فعّل كل تراكات الصوت المستقبلة
+  if(S.pc){
+    S.pc.getReceivers().forEach(r=>{
+      if(r.track && r.track.kind==='audio'){
+        r.track.enabled = !S.deaf;
+      }
+    });
+  }
+  if(S._remoteAudioNodes){
+    Object.values(S._remoteAudioNodes).forEach(n=>{
+      if(n.g) n.g.gain.value = S.deaf ? 0 : 1;
+    });
+  }
+}
+
 async function preparePeer(){
   if(S.pc) return S.pc;
   S.pc=new RTCPeerConnection({
@@ -587,7 +616,19 @@ async function preparePeer(){
   S.pc.onconnectionstatechange=()=>{
     if(!S.pc) return;
     const st=S.pc.connectionState;
-    if(st==='connected'){ $('#vstatus').textContent='متصل ✓'; $('#vtitle').textContent='مكالمة مع '+S.callWith; toast('✅','المكالمة اتصلت'); }
+    if(st==='connected'){
+      $('#vstatus').textContent='متصل ✓';
+      $('#vtitle').textContent='مكالمة مع '+S.callWith;
+      toast('✅','المكالمة اتصلت');
+      // إجبار تشغيل الصوت عند الاتصال
+      forceRemoteAudioPlay();
+      // تأكد إن المايك الخارج شغال
+      if(S.pc){
+        S.pc.getSenders().forEach(s=>{
+          if(s.track && s.track.kind==='audio'){ s.track.enabled = !S.muted; }
+        });
+      }
+    }
     if(st==='failed'){ toast('⚠️','فشل الاتصال'); cleanupCall(true); }
     if(st==='disconnected') $('#vstatus').textContent='انقطع مؤقتاً...';
     if(st==='closed') cleanupCall(false);
@@ -905,6 +946,7 @@ $('#incAccept').onclick=acceptIncoming;
 $('#incReject').onclick=rejectIncoming;
 $('#cmute').onclick=toggleMute;
 $('#cdeaf').onclick=toggleDeaf;
+$('#cfixaudio').onclick=()=>{ forceRemoteAudioPlay(); toast('🔊','تم تشغيل الصوت'); };
 $('#ccam').onclick=toggleCam;
 $('#cstream').onclick=toggleShare;
 $('#cwatch').onclick=toggleWatch;
