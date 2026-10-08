@@ -973,11 +973,44 @@ async function toggleShare(){
   if(!S.pc) return;
   if(S.sharing&&S.screenStream){ await stopShare(); return; }
   try{
-    S.screenStream=await navigator.mediaDevices.getDisplayMedia({video:{cursor:'always'},audio:true});
+    S.screenStream=await navigator.mediaDevices.getDisplayMedia({
+      video:{
+        cursor:'always',
+        width:{ideal:1280,max:1280},
+        height:{ideal:720,max:720},
+        frameRate:{ideal:30,max:30}
+      },
+      audio:true
+    });
     const screenVideo=S.screenStream.getVideoTracks()[0];
     if(!screenVideo) throw new Error('no video');
+    try{ screenVideo.contentHint='detail'; }catch(e){}
+    try{
+      await screenVideo.applyConstraints({
+        width:{ideal:1280,max:1280},
+        height:{ideal:720,max:720},
+        frameRate:{ideal:30,max:30}
+      });
+    }catch(e){}
+
     const vs=S.pc.getSenders().find(s=>s.track?.kind==='video');
-    if(vs) await vs.replaceTrack(screenVideo); else S.pc.addTrack(screenVideo,S.screenStream);
+    if(vs) await vs.replaceTrack(screenVideo);
+    else S.pc.addTrack(screenVideo,S.screenStream);
+
+    // بتريت منخفض عشان الاستريم ميتقطّعش
+    try{
+      const sender=S.pc.getSenders().find(s=>s.track && s.track.id===screenVideo.id) ||
+                   S.pc.getSenders().find(s=>s.track?.kind==='video');
+      if(sender && sender.getParameters && sender.setParameters){
+        const p=sender.getParameters();
+        if(!p.encodings || !p.encodings.length) p.encodings=[{}];
+        p.encodings[0].maxBitrate=1500000; // ~1.5Mbps لـ 30fps
+        p.encodings[0].maxFramerate=30;
+        if(p.encodings[0].scaleResolutionDownBy==null) p.encodings[0].scaleResolutionDownBy=1;
+        await sender.setParameters(p);
+      }
+    }catch(e){ console.warn('screen bitrate', e); }
+
     const systemAudio=S.screenStream.getAudioTracks()[0]||null;
     S._screenAudioSender=null;
     if(systemAudio){
@@ -988,13 +1021,17 @@ async function toggleShare(){
         if(as){ S._prevMic=as.track; await as.replaceTrack(systemAudio); }
       }
     }else toast('⚠️','فعّل Share tab/system audio من كروم');
+
     await renegotiate();
     $('#localVideo').srcObject=S.screenStream;
     S.sharing=true; updateBtns();
     $('#videofloat').classList.add('expanded');
     showWatchBtn(true);
     screenVideo.onended=()=>stopShare();
-    toast('🖥️','شير سكرين — اضغط فل سكرين للاستريم');
+    // لو التراك اتعمل mute من النظام لأي سبب
+    screenVideo.onmute=()=>{};
+    screenVideo.onunmute=()=>{};
+    toast('🖥️','شير سكرين — 30 فريم ثابت');
   }catch(e){ toast('⚠️','الشير اتلغى'); S.sharing=false; updateBtns(); }
 }
 async function stopShare(){
