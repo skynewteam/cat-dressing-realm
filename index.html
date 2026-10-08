@@ -646,21 +646,22 @@ function exitFS(){ $('#streamFS').classList.remove('on'); }
 function applyRemoteVolume(){
   const remote=$('#remoteVideo');
   const fs=$('#fsRemote');
-  const v=Math.max(0, Math.min(1.5, S.remoteVol||1));
-  // مسار واحد بس للصوت عشان ميحصلش تقطيع/صدى
-  if(S._volGain){ try{ S._volGain.gain.value=0; }catch(e){} }
-  const out = S.deaf ? 0 : Math.min(1, v);
+  let v = Number(S.remoteVol);
+  if(!(v>=0)) v=1;
+  if(v>1.5) v=1.5;
+  S.remoteVol=v;
+  const playVol = S.deaf ? 0 : Math.min(1, v);
   if(remote){
-    remote.muted = !!S.deaf || v<=0;
-    try{ remote.volume = out; }catch(e){}
+    remote.muted = !!S.deaf;
+    remote.volume = playVol;
   }
   if(fs){
-    fs.muted = !!S.deaf || v<=0;
-    try{ fs.volume = out; }catch(e){}
+    fs.muted = !!S.deaf;
+    fs.volume = playVol;
   }
   if(S._remoteAudioNodes){
     Object.values(S._remoteAudioNodes).forEach(n=>{
-      if(n.g) n.g.gain.value = S.deaf ? 0 : Math.min(1, v);
+      if(n.g) n.g.gain.value = S.deaf ? 0 : Math.min(1.2, v);
     });
   }
   if($('#vpVal')) $('#vpVal').textContent=Math.round(v*100)+'%';
@@ -743,19 +744,30 @@ function addRemoteTrack(track){
   }
 }
 function forceRemoteAudioPlay(){
-  try{ if(S.remoteAudioCtx?.state==='suspended') S.remoteAudioCtx.resume(); }catch(e){}
+  try{ if(S.remoteAudioCtx && S.remoteAudioCtx.state==='suspended') S.remoteAudioCtx.resume(); }catch(e){}
+  if(S.remoteVol==null || S.remoteVol<=0) S.remoteVol=1;
   const remote=$('#remoteVideo');
-  if(remote){ const p=remote.play(); if(p&&p.catch) p.catch(()=>{}); }
+  if(remote){
+    remote.muted=!!S.deaf;
+    remote.volume = S.deaf ? 0 : Math.min(1, S.remoteVol);
+    const p=remote.play(); if(p&&p.catch) p.catch(()=>{});
+  }
   const fs=$('#fsRemote');
-  if(fs){ const p=fs.play(); if(p&&p.catch) p.catch(()=>{}); }
+  if(fs){
+    fs.muted=!!S.deaf;
+    fs.volume = S.deaf ? 0 : Math.min(1, S.remoteVol);
+    const p=fs.play(); if(p&&p.catch) p.catch(()=>{});
+  }
   if(S.pc){
     S.pc.getReceivers().forEach(r=>{
-      if(r.track && r.track.kind==='audio') r.track.enabled = !S.deaf;
+      if(r.track && r.track.kind==='audio'){
+        r.track.enabled = !S.deaf;
+      }
     });
   }
   if(S._remoteAudioNodes){
     Object.values(S._remoteAudioNodes).forEach(n=>{
-      if(n.g) n.g.gain.value = S.deaf ? 0 : Math.min(1, S.remoteVol||1);
+      if(n.g) n.g.gain.value = S.deaf ? 0 : Math.min(1.2, S.remoteVol||1);
     });
   }
   applyRemoteVolume();
@@ -790,8 +802,7 @@ async function preparePeer(){
       audio:{
         echoCancellation:true,
         noiseSuppression:S.noiseOn!==false,
-        autoGainControl:false,
-        channelCount:1
+        autoGainControl:true
       },
       video:{
         width:{ideal:480,max:640},
@@ -806,7 +817,7 @@ async function preparePeer(){
         audio:{
           echoCancellation:true,
           noiseSuppression:S.noiseOn!==false,
-          autoGainControl:false,
+          autoGainControl:true,
           channelCount:1
         },
         video:false
@@ -831,9 +842,12 @@ async function preparePeer(){
       vs.setParameters(p).catch(()=>{});
     }
   }catch(e){}
-  S.muted=false; S.deaf=false;
+  S.muted=false; S.deaf=false; S.remoteVol=1;
+  S.localStream.getAudioTracks().forEach(t=>{ t.enabled=true; try{t.contentHint='speech';}catch(e){} });
   $('#localVideo').srcObject=S.localStream; $('#localVideo').muted=true;
   $('#remoteVideo').srcObject=new MediaStream();
+  $('#remoteVideo').muted=false;
+  $('#remoteVideo').volume=1;
   updateBtns();
   return S.pc;
 }
@@ -924,7 +938,7 @@ async function toggleNoise(){
   S.noiseOn=!S.noiseOn;
   if(S.localStream){
     for(const t of S.localStream.getAudioTracks()){
-      try{ await t.applyConstraints({echoCancellation:true,noiseSuppression:S.noiseOn,autoGainControl:false}); }catch(e){}
+      try{ await t.applyConstraints({echoCancellation:true,noiseSuppression:S.noiseOn,autoGainControl:true}); }catch(e){}
     }
   }
   updateBtns();
