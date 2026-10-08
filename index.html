@@ -143,11 +143,28 @@ html,body{height:100%;overflow:hidden;font-family:var(--f);color:var(--text);use
   background:rgba(255,255,255,.75);backdrop-filter:blur(18px);
   border:1px solid var(--border);border-radius:18px;padding:10px;
   box-shadow:0 12px 40px rgba(74,163,209,.2);
+  touch-action:none;
 }
+#videofloat .vheader{
+  cursor:grab;user-select:none;-webkit-user-select:none;
+  min-height:36px;align-items:center;gap:8px;
+}
+#videofloat .vheader:active{cursor:grabbing}
+#videofloat .v-drag-hint{
+  font-size:.72rem;color:var(--sky4);font-weight:700;
+  padding:4px 8px;background:rgba(74,163,209,.12);border-radius:8px;
+  flex-shrink:0;pointer-events:none;
+}
+#videofloat .resize-handle{
+  position:absolute;left:2px;bottom:2px;width:28px;height:28px;
+  cursor:nwse-resize;opacity:.7;font-size:16px;line-height:28px;text-align:center;
+  color:var(--sky4);z-index:6;background:rgba(255,255,255,.5);border-radius:8px;
+}
+#videofloat .resize-handle:hover{opacity:1}
 #videofloat.on{display:flex}
 #videofloat.mini{width:auto;min-width:150px;padding:6px 10px}
 #videofloat.mini .vwrap,#videofloat.mini .vstatus{display:none}
-#videofloat.expanded{width:min(640px,92vw);left:50%;transform:translateX(-50%)}
+#videofloat.expanded{width:min(640px,92vw)}
 #videofloat.expanded .vwrap{grid-template-columns:1fr;position:relative}
 #videofloat.expanded #remoteVideo{height:300px;width:100%}
 #videofloat.expanded #localVideo{position:absolute;bottom:8px;left:8px;width:110px;height:82px;border-radius:10px;border:2px solid var(--border);z-index:2}
@@ -229,8 +246,8 @@ html,body{height:100%;overflow:hidden;font-family:var(--f);color:var(--text);use
   .body{grid-template-columns:1fr}
   .side{position:fixed;top:52px;bottom:0;width:240px;z-index:25;transform:translateX(110%);transition:transform .2s;border-left:none;border-right:1px solid var(--border)}
   .side.open{transform:translateX(0)}
-  #videofloat{bottom:70px;left:8px;right:8px;width:auto}
-  #videofloat.expanded{left:8px;right:8px;transform:none;width:auto}
+  #videofloat{bottom:70px;left:8px;width:min(360px,calc(100vw - 16px));right:auto}
+  #videofloat.expanded{width:min(96vw,640px);right:auto;transform:none}
 }
 </style>
 <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
@@ -300,14 +317,16 @@ html,body{height:100%;overflow:hidden;font-family:var(--f);color:var(--text);use
   </div>
 </div>
 <div id="videofloat">
-  <div class="vheader">
+  <div class="vheader" id="vDrag">
+    <span class="v-drag-hint" id="vDragHint">⠿ اسحب</span>
     <strong id="vtitle">مكالمة</strong>
     <div class="vbtns">
-      <button id="vfs">⛶ فل سكرين</button>
-      <button id="vmax">⬇️</button>
-      <button id="vclose">✕</button>
+      <button type="button" id="vfs">⛶</button>
+      <button type="button" id="vmax">⬇️</button>
+      <button type="button" id="vclose">✕</button>
     </div>
   </div>
+  <div class="resize-handle" id="vResize" title="تحجيم">⌟</div>
   <div class="vwrap">
     <video id="remoteVideo" autoplay playsinline></video>
     <video id="localVideo" autoplay playsinline muted></video>
@@ -583,8 +602,17 @@ function sendInvite(){
 function showCallUI(){
   $('#callbar').classList.add('on');
   $('#cname').textContent='مع '+S.callWith;
-  $('#videofloat').classList.add('on');
-  $('#videofloat').classList.remove('mini','expanded');
+  const vf=$('#videofloat');
+  vf.classList.add('on');
+  vf.classList.remove('mini','expanded');
+  // موضع افتراضي لو لسه متعملش سحب
+  if(!vf.dataset.moved){
+    vf.style.left='16px';
+    vf.style.bottom='16px';
+    vf.style.top='auto';
+    vf.style.right='auto';
+    vf.style.transform='none';
+  }
   S.videoMini=false;
   $('#vtitle').textContent='مكالمة مع '+S.callWith;
   $('#vstatus').textContent='جاري الاتصال...';
@@ -618,28 +646,22 @@ function exitFS(){ $('#streamFS').classList.remove('on'); }
 function applyRemoteVolume(){
   const remote=$('#remoteVideo');
   const fs=$('#fsRemote');
-  const v=S.remoteVol;
-  const out=S.deaf?0:Math.min(1,v);
-  if(remote){ remote.volume=out; remote.muted=!!S.deaf || v<=0; }
-  if(fs){ fs.volume=out; fs.muted=!!S.deaf || v<=0; }
-  // فوق 100% عبر WebAudio
-  if(v>1 && !S.deaf){
-    try{
-      if(!S._volCtx){
-        S._volCtx=new (window.AudioContext||window.webkitAudioContext)();
-        S._volGain=S._volCtx.createGain();
-        S._volGain.connect(S._volCtx.destination);
-      }
-      if(S._volCtx.state==='suspended') S._volCtx.resume();
-      if(remote?.srcObject && !S._volSrc){
-        S._volSrc=S._volCtx.createMediaStreamSource(remote.srcObject);
-        S._volSrc.connect(S._volGain);
-        if(remote) remote.muted=true; // عشان منضاعفش
-      }
-      if(S._volGain) S._volGain.gain.value=v;
-    }catch(e){}
-  }else if(S._volGain){
-    S._volGain.gain.value=0;
+  const v=Math.max(0, Math.min(1.5, S.remoteVol||1));
+  // مسار واحد بس للصوت عشان ميحصلش تقطيع/صدى
+  if(S._volGain){ try{ S._volGain.gain.value=0; }catch(e){} }
+  const out = S.deaf ? 0 : Math.min(1, v);
+  if(remote){
+    remote.muted = !!S.deaf || v<=0;
+    try{ remote.volume = out; }catch(e){}
+  }
+  if(fs){
+    fs.muted = !!S.deaf || v<=0;
+    try{ fs.volume = out; }catch(e){}
+  }
+  if(S._remoteAudioNodes){
+    Object.values(S._remoteAudioNodes).forEach(n=>{
+      if(n.g) n.g.gain.value = S.deaf ? 0 : Math.min(1, v);
+    });
   }
   if($('#vpVal')) $('#vpVal').textContent=Math.round(v*100)+'%';
   if($('#volRange')) $('#volRange').value=Math.round(v*100);
@@ -697,11 +719,15 @@ function addRemoteTrack(track){
   }
   if(track.kind==='audio'){
     track.enabled=true;
-    if(stream.getAudioTracks().length===0){
+    if([...stream.getTracks()].find(t=>t.id===track.id)) return;
+    const existingAudio = stream.getAudioTracks();
+    // أول تراك (مايك المكالمة) → الفيديو يشغّله لوحده (من غير تقطيع)
+    if(existingAudio.length===0){
       stream.addTrack(track);
       applyRemoteVolume();
       remote.play().catch(()=>{});
-    }else{
+    } else {
+      // تراك إضافي (صوت الاستريم) → AudioContext منفصل عشان الاتنين يشتغلوا
       try{
         if(!S.remoteAudioCtx) S.remoteAudioCtx=new (window.AudioContext||window.webkitAudioContext)();
         if(S.remoteAudioCtx.state==='suspended') S.remoteAudioCtx.resume();
@@ -709,22 +735,29 @@ function addRemoteTrack(track){
         if(S._remoteAudioNodes[track.id]) return;
         const src=S.remoteAudioCtx.createMediaStreamSource(new MediaStream([track]));
         const g=S.remoteAudioCtx.createGain();
-        g.gain.value=S.deaf?0:S.remoteVol;
+        g.gain.value=S.deaf?0:Math.min(1, S.remoteVol||1);
         src.connect(g); g.connect(S.remoteAudioCtx.destination);
         S._remoteAudioNodes[track.id]={src,g};
-      }catch(e){}
+      }catch(e){ console.warn(e); }
     }
   }
 }
 function forceRemoteAudioPlay(){
   try{ if(S.remoteAudioCtx?.state==='suspended') S.remoteAudioCtx.resume(); }catch(e){}
-  try{ if(S._volCtx?.state==='suspended') S._volCtx.resume(); }catch(e){}
   const remote=$('#remoteVideo');
-  if(remote) remote.play().catch(()=>{});
+  if(remote){ const p=remote.play(); if(p&&p.catch) p.catch(()=>{}); }
   const fs=$('#fsRemote');
-  if(fs) fs.play().catch(()=>{});
-  if(S.pc) S.pc.getReceivers().forEach(r=>{ if(r.track?.kind==='audio') r.track.enabled=!S.deaf; });
-  if(S._remoteAudioNodes) Object.values(S._remoteAudioNodes).forEach(n=>{ if(n.g) n.g.gain.value=S.deaf?0:S.remoteVol; });
+  if(fs){ const p=fs.play(); if(p&&p.catch) p.catch(()=>{}); }
+  if(S.pc){
+    S.pc.getReceivers().forEach(r=>{
+      if(r.track && r.track.kind==='audio') r.track.enabled = !S.deaf;
+    });
+  }
+  if(S._remoteAudioNodes){
+    Object.values(S._remoteAudioNodes).forEach(n=>{
+      if(n.g) n.g.gain.value = S.deaf ? 0 : Math.min(1, S.remoteVol||1);
+    });
+  }
   applyRemoteVolume();
 }
 async function preparePeer(){
@@ -754,18 +787,50 @@ async function preparePeer(){
   };
   try{
     S.localStream=await navigator.mediaDevices.getUserMedia({
-      audio:{echoCancellation:true,noiseSuppression:S.noiseOn!==false,autoGainControl:true},
-      video:{width:{ideal:640},height:{ideal:480},facingMode:S.facing||'user'}
+      audio:{
+        echoCancellation:true,
+        noiseSuppression:S.noiseOn!==false,
+        autoGainControl:false,
+        channelCount:1
+      },
+      video:{
+        width:{ideal:480,max:640},
+        height:{ideal:360,max:480},
+        frameRate:{ideal:15,max:20},
+        facingMode:S.facing||'user'
+      }
     });
   }catch(e){
     try{
       S.localStream=await navigator.mediaDevices.getUserMedia({
-        audio:{echoCancellation:true,noiseSuppression:S.noiseOn!==false,autoGainControl:true}, video:false
+        audio:{
+          echoCancellation:true,
+          noiseSuppression:S.noiseOn!==false,
+          autoGainControl:false,
+          channelCount:1
+        },
+        video:false
       });
       S.camOn=false;
     }catch(err){ toast('⚠️','وافق على المايك'); cleanupCall(false); throw err; }
   }
-  S.localStream.getTracks().forEach(t=>{ t.enabled=true; S.pc.addTrack(t,S.localStream); });
+  S.localStream.getTracks().forEach(t=>{
+    t.enabled=true;
+    try{ if(t.kind==='audio') t.contentHint='speech'; }catch(e){}
+    try{ if(t.kind==='video') t.contentHint='motion'; }catch(e){}
+    S.pc.addTrack(t,S.localStream);
+  });
+  // أولوية للأوديو: بتريت فيديو منخفض
+  try{
+    const vs=S.pc.getSenders().find(s=>s.track&&s.track.kind==='video');
+    if(vs&&vs.getParameters&&vs.setParameters){
+      const p=vs.getParameters();
+      if(!p.encodings||!p.encodings.length) p.encodings=[{}];
+      p.encodings[0].maxBitrate=250000;
+      p.encodings[0].maxFramerate=15;
+      vs.setParameters(p).catch(()=>{});
+    }
+  }catch(e){}
   S.muted=false; S.deaf=false;
   $('#localVideo').srcObject=S.localStream; $('#localVideo').muted=true;
   $('#remoteVideo').srcObject=new MediaStream();
@@ -859,7 +924,7 @@ async function toggleNoise(){
   S.noiseOn=!S.noiseOn;
   if(S.localStream){
     for(const t of S.localStream.getAudioTracks()){
-      try{ await t.applyConstraints({echoCancellation:true,noiseSuppression:S.noiseOn,autoGainControl:true}); }catch(e){}
+      try{ await t.applyConstraints({echoCancellation:true,noiseSuppression:S.noiseOn,autoGainControl:false}); }catch(e){}
     }
   }
   updateBtns();
@@ -993,6 +1058,113 @@ $('#volClose').onclick=()=>$('#volPanel').classList.remove('on');
 $$('[data-c]').forEach(b=>b.onclick=()=>{ const id=b.dataset.c; if(id) $('#'+id).classList.add('h'); });
 $$('.mod').forEach(m=>m.onclick=e=>{ if(e.target===m) m.classList.add('h'); });
 document.addEventListener('keydown',e=>{ if(e.key==='Escape'){ exitFS(); $('#volPanel').classList.remove('on'); } });
+
+/* سحب وتحجيم صندوق الفيديو */
+(function setupVideoDrag(){
+  let dragging=false, resizing=false;
+  let sx=0, sy=0, sl=0, st=0, sw=0, sh=0;
+  const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+
+  function el(){ return document.getElementById('videofloat'); }
+
+  function pinTopLeft(box){
+    const r=box.getBoundingClientRect();
+    box.style.left=r.left+'px';
+    box.style.top=r.top+'px';
+    box.style.bottom='auto';
+    box.style.right='auto';
+    box.style.transform='none';
+    box.dataset.moved='1';
+    return r;
+  }
+
+  function startDrag(e){
+    const box=el();
+    if(!box || !box.classList.contains('on')) return;
+    if(e.target && e.target.closest && e.target.closest('button')) return;
+    const t=e.touches?e.touches[0]:e;
+    const r=pinTopLeft(box);
+    sx=t.clientX; sy=t.clientY; sl=r.left; st=r.top;
+    dragging=true;
+    try{ box.setPointerCapture && e.pointerId!=null && box.setPointerCapture(e.pointerId); }catch(err){}
+    e.preventDefault();
+    e.stopPropagation();
+  }
+
+  function startResize(e){
+    const box=el();
+    if(!box || !box.classList.contains('on')) return;
+    const t=e.touches?e.touches[0]:e;
+    const r=pinTopLeft(box);
+    sx=t.clientX; sy=t.clientY; sl=r.left; st=r.top; sw=r.width; sh=r.height;
+    resizing=true;
+    e.preventDefault();
+    e.stopPropagation();
+  }
+
+  function move(e){
+    if(!dragging && !resizing) return;
+    const box=el(); if(!box) return;
+    const t=e.touches?e.touches[0]:e;
+    if(!t) return;
+    const dx=t.clientX-sx, dy=t.clientY-sy;
+    if(dragging){
+      const nw=box.offsetWidth, nh=box.offsetHeight;
+      box.style.left=clamp(sl+dx, 0, window.innerWidth-Math.min(nw,40))+'px';
+      box.style.top=clamp(st+dy, 0, window.innerHeight-Math.min(nh,40))+'px';
+    }else if(resizing){
+      const newW=clamp(sw+dx, 200, Math.min(window.innerWidth-8, 920));
+      const newH=clamp(sh+dy, 150, Math.min(window.innerHeight-8, 720));
+      box.style.width=newW+'px';
+      box.style.maxWidth='none';
+      const remote=document.getElementById('remoteVideo');
+      const local=document.getElementById('localVideo');
+      const inner=Math.max(90, newH-56);
+      if(box.classList.contains('expanded')){
+        if(remote) remote.style.height=inner+'px';
+      }else{
+        const h=Math.max(80, (inner-6)/1);
+        if(remote) remote.style.height=h+'px';
+        if(local) local.style.height=h+'px';
+      }
+    }
+    e.preventDefault();
+  }
+
+  function end(){ dragging=false; resizing=false; }
+
+  function bind(){
+    const header=document.getElementById('vDrag');
+    const handle=document.getElementById('vResize');
+    if(header && !header._dragBound){
+      header._dragBound=1;
+      header.addEventListener('pointerdown', startDrag);
+      header.addEventListener('touchstart', startDrag, {passive:false});
+      header.addEventListener('mousedown', startDrag);
+    }
+    if(handle && !handle._resizeBound){
+      handle._resizeBound=1;
+      handle.addEventListener('pointerdown', startResize);
+      handle.addEventListener('touchstart', startResize, {passive:false});
+      handle.addEventListener('mousedown', startResize);
+    }
+  }
+
+  document.addEventListener('pointermove', move, {passive:false});
+  document.addEventListener('pointerup', end);
+  document.addEventListener('pointercancel', end);
+  document.addEventListener('mousemove', move, {passive:false});
+  document.addEventListener('mouseup', end);
+  document.addEventListener('touchmove', move, {passive:false});
+  document.addEventListener('touchend', end);
+  document.addEventListener('touchcancel', end);
+
+  // اربط دلوقتي وبعد أي تفاعل
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', bind);
+  else bind();
+  setInterval(bind, 2000);
+})();
+
 })();
 </script>
 </body>
