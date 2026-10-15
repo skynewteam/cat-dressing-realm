@@ -429,51 +429,63 @@ function softBeep(kind){
     const ctx=S._sfxCtx;
     if(ctx.state==='suspended') ctx.resume();
     const now=ctx.currentTime;
-    const o=ctx.createOscillator();
-    const g=ctx.createGain();
-    o.connect(g); g.connect(ctx.destination);
-    // حجم خفيف جدًا
-    const vol=0.035;
+    // صوت أوضح وأعلى — مش مزعج بس مسموع
+    const volMsg=0.18;
+    const volRing=0.22;
+    const volNet=0.14;
+
+    function tone(freq, start, dur, vol, type){
+      const o=ctx.createOscillator();
+      const g=ctx.createGain();
+      o.connect(g); g.connect(ctx.destination);
+      o.type=type||'sine';
+      o.frequency.value=freq;
+      g.gain.setValueAtTime(0, start);
+      g.gain.linearRampToValueAtTime(vol, start+0.02);
+      g.gain.exponentialRampToValueAtTime(0.001, start+dur);
+      o.start(start);
+      o.stop(start+dur+0.02);
+    }
+
     if(kind==='msg'){
-      o.type='sine'; o.frequency.value=880;
-      g.gain.setValueAtTime(0,now);
-      g.gain.linearRampToValueAtTime(vol,now+0.01);
-      g.gain.exponentialRampToValueAtTime(0.001,now+0.12);
-      o.start(now); o.stop(now+0.14);
+      // نغمتين واضحتين للرسالة
+      tone(880, now, 0.14, volMsg);
+      tone(1100, now+0.12, 0.16, volMsg*0.9);
     }else if(kind==='ring'){
-      o.type='sine'; o.frequency.value=640;
-      g.gain.setValueAtTime(0,now);
-      g.gain.linearRampToValueAtTime(vol*0.9,now+0.02);
-      g.gain.exponentialRampToValueAtTime(0.001,now+0.18);
-      o.start(now); o.stop(now+0.2);
-      // نغمة تانية خفيفة
-      setTimeout(()=>{
+      // رنة أطول تتكرر ~3 مرات عشان تبان
+      if(S._ringTimer){ clearInterval(S._ringTimer); S._ringTimer=null; }
+      let count=0;
+      const playRing=()=>{
         try{
-          const o2=ctx.createOscillator(); const g2=ctx.createGain();
-          o2.connect(g2); g2.connect(ctx.destination);
-          o2.type='sine'; o2.frequency.value=760;
+          if(ctx.state==='suspended') ctx.resume();
           const t=ctx.currentTime;
-          g2.gain.setValueAtTime(0,t);
-          g2.gain.linearRampToValueAtTime(vol*0.7,t+0.02);
-          g2.gain.exponentialRampToValueAtTime(0.001,t+0.16);
-          o2.start(t); o2.stop(t+0.18);
+          tone(620, t, 0.22, volRing);
+          tone(820, t+0.2, 0.22, volRing*0.85);
+          tone(620, t+0.45, 0.18, volRing*0.7);
         }catch(e){}
-      },220);
+      };
+      playRing();
+      S._ringTimer=setInterval(()=>{
+        count++;
+        if(count>=4){ clearInterval(S._ringTimer); S._ringTimer=null; return; }
+        // وقف الرنة لو المكالمة اترد أو اتقفلت
+        if(!S.incomingFrom && !(S.callWith && $('#vstatus') && ($('#vstatus').textContent||'').indexOf('جاري')>=0)){
+          clearInterval(S._ringTimer); S._ringTimer=null; return;
+        }
+        playRing();
+      }, 1400);
     }else if(kind==='down'){
-      o.type='sine'; o.frequency.value=320;
-      g.gain.setValueAtTime(0,now);
-      g.gain.linearRampToValueAtTime(vol*0.8,now+0.02);
-      g.gain.exponentialRampToValueAtTime(0.001,now+0.25);
-      o.start(now); o.stop(now+0.28);
+      tone(300, now, 0.28, volNet);
     }else if(kind==='up'){
-      o.type='sine'; o.frequency.value=520;
-      g.gain.setValueAtTime(0,now);
-      g.gain.linearRampToValueAtTime(vol*0.8,now+0.02);
-      g.gain.exponentialRampToValueAtTime(0.001,now+0.2);
-      o.start(now); o.stop(now+0.22);
+      tone(520, now, 0.18, volNet);
+      tone(700, now+0.12, 0.16, volNet*0.8);
     }
   }catch(e){}
 }
+function stopRing(){
+  if(S._ringTimer){ clearInterval(S._ringTimer); S._ringTimer=null; }
+}
+
 
 async function requestPerms(){
   try{
@@ -510,12 +522,25 @@ function connectRealtime(){
   });
   S.socket.on('friend:added',u=>{ addFriend(u); toast('🐾',u.n+' بقى معاك'); });
   S.socket.on('chat:message',x=>{
+    if(x.message && typeof x.message==='object' && x.message.__clear){
+      applyClearChat(x.from); return;
+    }
     if(!S.chats[x.from]) S.chats[x.from]=[]; S.chats[x.from].push(x.message);
     softBeep('msg'); if(S.active===x.from) renderMsgs(); else toast('💬',x.from);
   });
   S.socket.on('chat:sent',x=>{
+    if(x.message && typeof x.message==='object' && x.message.__clear){
+      // المرسل بالفعل مسح محليًا
+      if(S.chats[x.to]) S.chats[x.to]=[];
+      if(S.active===x.to) renderMsgs();
+      return;
+    }
     if(!S.chats[x.to]) S.chats[x.to]=[]; S.chats[x.to].push(x.message);
     if(S.active===x.to) renderMsgs();
+  });
+  S.socket.on('chat:clear',x=>{
+    const who=x.from||x.to||x.with;
+    applyClearChat(who);
   });
   S.socket.on('chat:file',x=>{
     if(!S.chats[x.from]) S.chats[x.from]=[];
@@ -725,6 +750,7 @@ function incomingCall(from){
   $('#incoming').classList.add('on'); softBeep('ring');
 }
 async function acceptIncoming(){
+  stopRing();
   const from=S.incomingFrom; if(!from){ $('#incoming').classList.remove('on'); return; }
   $('#incoming').classList.remove('on'); S.incomingFrom=null; S.callWith=from;
   try{
@@ -738,6 +764,7 @@ async function acceptIncoming(){
   }catch(e){ console.error(e); toast('⚠️','فشل القبول — وافق على المايك'); cleanupCall(false); }
 }
 function rejectIncoming(){
+  stopRing();
   if(S.incomingFrom&&S.socket) S.socket.emit('call:reject',{to:S.incomingFrom});
   S.incomingFrom=null; $('#incoming').classList.remove('on');
 }
@@ -826,6 +853,7 @@ async function preparePeer(){
     const st=S.pc.connectionState;
     if(st==='connected'){
       $('#vstatus').textContent='متصل ✓';
+      stopRing();
       if(S._iceRetry){ clearTimeout(S._iceRetry); S._iceRetry=null; }
       toast('✅','المكالمة اتصلت');
       forceRemoteAudioPlay();
@@ -959,6 +987,7 @@ async function handleOffer(x){
   }catch(e){ console.error(e); toast('⚠️','فشل استقبال المكالمة'); if(!S.callWith) cleanupCall(false); }
 }
 function cleanupCall(notify){
+  stopRing();
   if(notify&&S.callWith&&S.socket?.connected){ try{ S.socket.emit('call:hangup',{to:S.callWith}); }catch(e){} }
   if(S.screenStream){ S.screenStream.getTracks().forEach(t=>{try{t.stop()}catch(e){}}); S.screenStream=null; }
   if(S._screenAudioSender&&S.pc){ try{S.pc.removeTrack(S._screenAudioSender)}catch(e){} S._screenAudioSender=null; }
@@ -1141,6 +1170,7 @@ $('#bfile').onclick=()=>{ if(S.active) $('#ffile').click(); };
 $('#fimg').onchange=()=>handleFile($('#fimg'));
 $('#fvid').onchange=()=>handleFile($('#fvid'));
 $('#ffile').onchange=()=>handleFile($('#ffile'));
+$('#bdelchat').onclick=clearChatBoth;
 $('#bcall').onclick=startCall;
 $('#bgroup').onclick=startGroupCall;
 $('#binv').onclick=()=>{ $('#minv').classList.remove('h'); $('#iinput').value=''; $('#iinput').focus(); };
