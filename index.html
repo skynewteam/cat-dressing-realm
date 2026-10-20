@@ -894,17 +894,15 @@ function addRemoteTrack(track){
 function forceRemoteAudioPlay(){
   try{
     if(S.remoteVol==null || !(S.remoteVol>0)) S.remoteVol=1;
-    // فعّل AudioContext لو موجود
     try{
       if(!S._audioUnlock){
         const AC=window.AudioContext||window.webkitAudioContext;
-        if(AC){ S._audioUnlock=new AC(); }
+        if(AC) S._audioUnlock=new AC();
       }
       if(S._audioUnlock && S._audioUnlock.state==='suspended') S._audioUnlock.resume();
-      if(S.remoteAudioCtx && S.remoteAudioCtx.state==='suspended') S.remoteAudioCtx.resume();
     }catch(e){}
 
-    // اربط كل تراكات الاستقبال لو الفيديو فاضي
+    // املأ remote من receivers
     const remote=$('#remoteVideo');
     if(remote && S.pc){
       try{
@@ -919,30 +917,46 @@ function forceRemoteAudioPlay(){
             ms.addTrack(r.track);
           }
         });
-        if(ms.getTracks().length){
-          remote.srcObject = ms;
-        }
-      }catch(e){ console.warn(e); }
+        if(ms.getTracks().length) remote.srcObject = ms;
+      }catch(e){}
     }
 
-    const playEl = (el)=>{
-      if(!el) return;
-      el.setAttribute('playsinline','');
-      el.playsInline = true;
-      el.autoplay = true;
-      el.muted = !!S.deaf;
-      el.volume = S.deaf ? 0 : Math.min(1, S.remoteVol||1);
-      const p = el.play();
-      if(p && p.catch) p.catch(()=>{
-        // محاولة أخيرة muted ثم unmute
-        el.muted = true;
-        el.play().then(()=>{
-          if(!S.deaf){ el.muted=false; el.volume=Math.min(1,S.remoteVol||1); }
+    // فيديو
+    if(remote){
+      remote.setAttribute('playsinline','');
+      remote.playsInline=true;
+      remote.autoplay=true;
+      remote.muted = !!S.deaf;
+      remote.volume = S.deaf ? 0 : Math.min(1, S.remoteVol||1);
+      remote.play().catch(()=>{
+        remote.muted=true;
+        remote.play().then(()=>{
+          if(!S.deaf){ remote.muted=false; }
         }).catch(()=>{});
       });
-    };
-    playEl(remote);
-    playEl($('#fsRemote'));
+    }
+    const fs=$('#fsRemote');
+    if(fs && remote && remote.srcObject){
+      fs.srcObject=remote.srcObject;
+      fs.muted=!!S.deaf;
+      fs.volume=S.deaf?0:Math.min(1,S.remoteVol||1);
+      fs.play().catch(()=>{});
+    }
+
+    // صوت منفصل (الموبايل)
+    try{
+      if(S._remoteAudioEl){
+        S._remoteAudioEl.muted = !!S.deaf;
+        S._remoteAudioEl.volume = S.deaf ? 0 : Math.min(1, S.remoteVol||1);
+        if(remote && remote.srcObject){
+          const atracks = remote.srcObject.getAudioTracks();
+          if(atracks.length){
+            S._remoteAudioEl.srcObject = new MediaStream(atracks);
+          }
+        }
+        S._remoteAudioEl.play().catch(()=>{});
+      }
+    }catch(e){}
 
     if(S.pc){
       S.pc.getReceivers().forEach(r=>{
@@ -953,37 +967,68 @@ function forceRemoteAudioPlay(){
       });
     }
     try{ applyRemoteVolume(); }catch(e){}
-  }catch(e){ console.warn('forceRemoteAudioPlay', e); }
+  }catch(e){ console.warn(e); }
 }
+
 
 async function preparePeer(){
   if(S.pc && S.pc.connectionState!=='closed' && S.pc.connectionState!=='failed') return S.pc;
   if(S.pc){ try{S.pc.close()}catch(e){} S.pc=null; }
-  S.pc=new RTCPeerConnection({
-    iceServers:[
+
+  S.pc = new RTCPeerConnection({
+    iceServers: [
       {urls:'stun:stun.l.google.com:19302'},
       {urls:'stun:stun1.l.google.com:19302'},
       {urls:'stun:stun2.l.google.com:19302'},
-      // TURN مجاني عشان النت المختلف (موبايل/واي فاي)
+      {urls:'stun:stun.cloudflare.com:3478'},
       {urls:'turn:openrelay.metered.ca:80', username:'openrelayproject', credential:'openrelayproject'},
       {urls:'turn:openrelay.metered.ca:443', username:'openrelayproject', credential:'openrelayproject'},
-      {urls:'turn:openrelay.metered.ca:443?transport=tcp', username:'openrelayproject', credential:'openrelayproject'}
-    ],
-    iceCandidatePoolSize:10
+      {urls:'turn:openrelay.metered.ca:443?transport=tcp', username:'openrelayproject', credential:'openrelayproject'},
+      {urls:'turn:openrelay.metered.ca:80?transport=tcp', username:'openrelayproject', credential:'openrelayproject'}
+    ]
   });
-  S.pc.onicecandidate=e=>{
-    if(e.candidate&&S.socket&&S.callWith)
-      S.socket.emit('call:ice',{to:S.callWith,candidate:e.candidate});
+
+  S.pc.onicecandidate = e=>{
+    if(e.candidate && S.socket && S.callWith){
+      try{ S.socket.emit('call:ice',{to:S.callWith,candidate:e.candidate}); }catch(err){}
+    }
   };
-  S.pc.ontrack=e=>{
+
+  S.pc.oniceconnectionstatechange = ()=>{
+    if(!S.pc) return;
+    const ice = S.pc.iceConnectionState;
+    if(ice==='connected' || ice==='completed'){
+      if($('#vstatus')) $('#vstatus').textContent='متصل ✓';
+      forceRemoteAudioPlay();
+    }else if(ice==='checking'){
+      if($('#vstatus')) $('#vstatus').textContent='بيربط...';
+    }else if(ice==='failed' || ice==='disconnected'){
+      if($('#vstatus')) $('#vstatus').textContent='شبكة ضعيفة...';
+      // محاولة ice restart هادية
+      if(!S._iceOnce && ice==='failed'){
+        S._iceOnce = true;
+        setTimeout(async()=>{
+          try{
+            if(!S.pc || !S.callWith) return;
+            if(S.pc.restartIce) S.pc.restartIce();
+            const offer = await S.pc.createOffer({iceRestart:true});
+            await S.pc.setLocalDescription(offer);
+            if(S.socket) S.socket.emit('call:offer',{to:S.callWith,sdp:S.pc.localDescription});
+          }catch(e){}
+        }, 1500);
+      }
+    }
+  };
+
+  S.pc.ontrack = e=>{
     try{
-      const remote=$('#remoteVideo');
+      const remote = $('#remoteVideo');
       if(!remote) return;
-      if(e.streams && e.streams[0]){
-        remote.srcObject = e.streams[0];
-      } else if(e.track){
-        if(!remote.srcObject) remote.srcObject = new MediaStream();
-        const stream = remote.srcObject;
+
+      // ستريم كامل من WebRTC
+      let stream = (e.streams && e.streams[0]) ? e.streams[0] : null;
+      if(!stream && e.track){
+        stream = remote.srcObject instanceof MediaStream ? remote.srcObject : new MediaStream();
         if(![...stream.getTracks()].some(x=>x.id===e.track.id)){
           if(e.track.kind==='video'){
             stream.getVideoTracks().forEach(v=>{ try{stream.removeTrack(v)}catch(err){} });
@@ -991,7 +1036,31 @@ async function preparePeer(){
           stream.addTrack(e.track);
         }
       }
-      if(e.track) e.track.enabled = true;
+      if(stream){
+        remote.srcObject = stream;
+        // عنصر صوت منفصل — أهم حاجة للصوت على الموبايل
+        try{
+          if(!S._remoteAudioEl){
+            S._remoteAudioEl = document.createElement('audio');
+            S._remoteAudioEl.autoplay = true;
+            S._remoteAudioEl.setAttribute('playsinline','');
+            S._remoteAudioEl.style.display = 'none';
+            document.body.appendChild(S._remoteAudioEl);
+          }
+          const audioOnly = new MediaStream(stream.getAudioTracks());
+          if(audioOnly.getAudioTracks().length){
+            S._remoteAudioEl.srcObject = audioOnly;
+            S._remoteAudioEl.muted = !!S.deaf;
+            S._remoteAudioEl.volume = S.deaf ? 0 : Math.min(1, S.remoteVol||1);
+            S._remoteAudioEl.play().catch(()=>{});
+          }
+        }catch(err){ console.warn(err); }
+      }
+
+      if(e.track){
+        e.track.enabled = true;
+        e.track.onunmute = ()=> forceRemoteAudioPlay();
+      }
       forceRemoteAudioPlay();
       if(e.track && e.track.kind==='video'){
         try{ showWatchBtn(true); }catch(err){}
@@ -1001,15 +1070,14 @@ async function preparePeer(){
     }catch(err){ console.warn('ontrack', err); }
   };
 
-  S.pc.onconnectionstatechange=()=>{
+  S.pc.onconnectionstatechange = ()=>{
     if(!S.pc) return;
-    const st=S.pc.connectionState;
+    const st = S.pc.connectionState;
     if(st==='connected'){
-      $('#vstatus').textContent='متصل ✓';
-      stopRing();
-      if(S._iceRetry){ clearTimeout(S._iceRetry); S._iceRetry=null; }
+      if($('#vstatus')) $('#vstatus').textContent='متصل ✓';
+      try{ stopRing(); }catch(e){}
       forceRemoteAudioPlay();
-      // اربط كل التراكات اللي وصلت
+      // اربط كل التراكات
       try{
         const remote=$('#remoteVideo');
         if(remote && S.pc){
@@ -1022,72 +1090,86 @@ async function preparePeer(){
           });
           if(ms.getTracks().length){
             remote.srcObject=ms;
+            // صوت منفصل
+            if(S._remoteAudioEl){
+              const a=new MediaStream(ms.getAudioTracks());
+              if(a.getAudioTracks().length){
+                S._remoteAudioEl.srcObject=a;
+                S._remoteAudioEl.play().catch(()=>{});
+              }
+            }
             remote.play().catch(()=>{});
-            const fs=$('#fsRemote');
-            if(fs){ fs.srcObject=ms; fs.play().catch(()=>{}); }
           }
         }
       }catch(e){}
-      S.pc.getSenders().forEach(s=>{ if(s.track?.kind==='audio') s.track.enabled=!S.muted; });
-    }
-    if(st==='disconnected'){
-      // متقفلش ومتعملش استرجاع عدواني — استنى شوية
-      if(S._flipping) return;
-      $('#vstatus').textContent='اتصال ضعيف...';
-    }
-    if(st==='failed'){
-      if(S._flipping) return;
-      $('#vstatus').textContent='فشل — أعد الاتصال يدوي';
-      toast('⚠️','الاتصال فشل — اقفل وافتح المكالمة تاني');
-    }
-    if(st==='closed'){
-      if(!S.callWith) return;
-      $('#vstatus').textContent='المكالمة اتقفلت';
+      S.pc.getSenders().forEach(s=>{
+        if(s.track && s.track.kind==='audio') s.track.enabled = !S.muted;
+      });
+    }else if(st==='connecting' || st==='disconnected'){
+      if($('#vstatus')) $('#vstatus').textContent='بيربط...';
+    }else if(st==='failed'){
+      if($('#vstatus')) $('#vstatus').textContent='فشل الربط — إنهاء وأعد الاتصال';
     }
   };
+
+  // مايك + كاميرا
   try{
-    S.localStream=await navigator.mediaDevices.getUserMedia({
-      audio:{echoCancellation:true,noiseSuppression:S.noiseOn!==false,autoGainControl:true},
-      video:{width:{ideal:640},height:{ideal:480},frameRate:{ideal:24,max:30},facingMode:S.facing||'user'}
+    S.localStream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: S.noiseOn !== false,
+        autoGainControl: true
+      },
+      video: {
+        width: {ideal: 480},
+        height: {ideal: 360},
+        frameRate: {ideal: 15, max: 20},
+        facingMode: S.facing || 'user'
+      }
     });
   }catch(e){
     try{
-      S.localStream=await navigator.mediaDevices.getUserMedia({
-        audio:{echoCancellation:true,noiseSuppression:S.noiseOn!==false,autoGainControl:true},
-        video:true
-      });
+      S.localStream = await navigator.mediaDevices.getUserMedia({audio:true, video:true});
     }catch(e2){
       try{
-        S.localStream=await navigator.mediaDevices.getUserMedia({
-          audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}, video:false
-        });
-        S.camOn=false;
-      }catch(err){ toast('⚠️','وافق على المايك/الكاميرا'); cleanupCall(false); throw err; }
+        S.localStream = await navigator.mediaDevices.getUserMedia({audio:true, video:false});
+        S.camOn = false;
+      }catch(err){
+        toast('⚠️','اسمح بالمايك والكاميرا من المتصفح');
+        throw err;
+      }
     }
   }
-  // addTrack لكل تراك على نفس الستريم (مهم عشان الطرف يشوف)
+
+  // مهم: فعّل كل التراكات قبل الإرسال
   S.localStream.getTracks().forEach(t=>{
-    t.enabled=true;
+    t.enabled = true;
     S.pc.addTrack(t, S.localStream);
   });
-  // لو مفيش فيديو — transceiver يستقبل فيديو الطرف
-  const hasVid=S.localStream.getVideoTracks().length>0;
-  if(!hasVid){
-    try{ S.pc.addTransceiver('video',{direction:'recvonly'}); }catch(e){}
-  }
-  try{ if(!S.localStream.getAudioTracks().length) S.pc.addTransceiver('audio',{direction:'recvonly'}); }catch(e){}
 
-  S.muted=false; S.deaf=false; S.remoteVol=1;
-  S.localStream.getAudioTracks().forEach(t=>{ t.enabled=true; });
-  $('#localVideo').srcObject=S.localStream;
-  $('#localVideo').muted=true;
+  // تأكد إن في مسار استقبال حتى لو مفيش كاميرا محلية
+  if(!S.localStream.getVideoTracks().length){
+    try{ S.pc.addTransceiver('video', {direction:'recvonly'}); }catch(e){}
+  }
+  if(!S.localStream.getAudioTracks().length){
+    try{ S.pc.addTransceiver('audio', {direction:'recvonly'}); }catch(e){}
+  }
+
+  S.muted = false;
+  S.deaf = false;
+  if(S.remoteVol==null) S.remoteVol = 1;
+  S._iceOnce = false;
+
+  $('#localVideo').srcObject = S.localStream;
+  $('#localVideo').muted = true;
   $('#localVideo').play().catch(()=>{});
-  $('#remoteVideo').srcObject=null;
-  $('#remoteVideo').muted=false;
-  $('#remoteVideo').volume=1;
+  $('#remoteVideo').srcObject = null;
+  $('#remoteVideo').muted = false;
+  $('#remoteVideo').volume = 1;
   updateBtns();
   return S.pc;
 }
+
 async function renegotiate(){
   if(!S.pc||!S.callWith||!S.socket) return;
   try{
@@ -1135,6 +1217,7 @@ function cleanupCall(notify){
   if(S.remoteAudioCtx){ try{S.remoteAudioCtx.close()}catch(e){} S.remoteAudioCtx=null; }
   if(S._volCtx){ try{S._volCtx.close()}catch(e){} S._volCtx=null; S._volGain=null; S._volSrc=null; }
   $('#localVideo').srcObject=null; $('#remoteVideo').srcObject=null;
+  if(S._remoteAudioEl){ try{S._remoteAudioEl.pause(); S._remoteAudioEl.srcObject=null;}catch(e){} }
   $('#fsRemote').srcObject=null; $('#fsLocal').srcObject=null;
   hideCallUI();
   S.callWith=null; S.incomingFrom=null;
