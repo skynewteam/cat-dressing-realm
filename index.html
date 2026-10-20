@@ -283,6 +283,7 @@ html,body{height:100%;overflow:hidden;font-family:var(--f);color:var(--text);use
     <button class="cb-btn on-state" id="cnoise">🧹 تصفية: On</button>
     <button class="cb-btn" id="cvol">🔉 صوت الطرف</button>
     <button class="cb-btn" id="cfixaudio">🔈 تشغيل الصوت</button>
+    <button class="cb-btn" id="cplayvid">▶️ تشغيل الفيديو</button>
     <button class="cb-btn" id="cfs">⛶ فل سكرين استريم</button>
     <button class="cb-btn" id="cmin">⬇️ تصغير</button>
     <button class="cb-btn dng" id="cleave">☎️ إنهاء</button>
@@ -335,8 +336,8 @@ html,body{height:100%;overflow:hidden;font-family:var(--f);color:var(--text);use
   </div>
   <div class="resize-handle" id="vResize" title="تحجيم">⌟</div>
   <div class="vwrap">
-    <video id="remoteVideo" autoplay playsinline></video>
-    <video id="localVideo" autoplay playsinline muted></video>
+    <video id="remoteVideo" autoplay playsinline webkit-playsinline x5-playsinline muted></video>
+    <video id="localVideo" autoplay playsinline webkit-playsinline x5-playsinline muted></video>
   </div>
   <div class="vstatus" id="vstatus">جاري الاتصال...</div>
 </div>
@@ -346,8 +347,8 @@ html,body{height:100%;overflow:hidden;font-family:var(--f);color:var(--text);use
     <strong id="fsTitle">الاستريم</strong>
     <button id="fsExit">✕ خروج من الفل سكرين</button>
   </div>
-  <video class="main" id="fsRemote" autoplay playsinline></video>
-  <div class="fs-pip"><video id="fsLocal" autoplay playsinline muted></video></div>
+  <video class="main" id="fsRemote" autoplay playsinline webkit-playsinline x5-playsinline></video>
+  <div class="fs-pip"><video id="fsLocal" autoplay playsinline webkit-playsinline x5-playsinline muted></video></div>
 </div>
 <div id="volPanel">
   <div class="vp-title" id="vpTitle">صوت الطرف</div>
@@ -830,19 +831,54 @@ function rejectIncoming(){
   if(S.incomingFrom&&S.socket) S.socket.emit('call:reject',{to:S.incomingFrom});
   S.incomingFrom=null; $('#incoming').classList.remove('on');
 }
+
+function isMobile(){
+  return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent||'');
+}
+function forceVideoPlay(el, withSound){
+  if(!el) return;
+  try{
+    el.setAttribute('playsinline','');
+    el.setAttribute('webkit-playsinline','');
+    el.playsInline=true;
+    el.autoplay=true;
+    // على الموبايل: شغّل muted أولاً عشان المتصفح يسمح، بعدين فك الميوت للصوت
+    if(isMobile() && withSound){
+      el.muted=true;
+      const p=el.play();
+      if(p&&p.then){
+        p.then(()=>{
+          setTimeout(()=>{
+            if(!S.deaf){ el.muted=false; el.volume=Math.min(1,S.remoteVol||1); }
+          },300);
+        }).catch(()=>{
+          el.muted=true;
+          el.play().catch(()=>{});
+        });
+      }
+    }else{
+      el.muted = withSound ? !!S.deaf : true;
+      if(withSound && !S.deaf) el.volume=Math.min(1,S.remoteVol||1);
+      el.play().catch(()=>{
+        el.muted=true;
+        el.play().catch(()=>{});
+      });
+    }
+  }catch(e){}
+}
+
 function refreshRemoteVideo(){
   const remote=$('#remoteVideo');
   if(!remote || !remote.srcObject) return;
-  // إعادة ربط srcObject عشان المتصفح يرسم الفيديو (حل الشاشة السودة)
   const stream=remote.srcObject;
   remote.srcObject=null;
   remote.srcObject=stream;
-  remote.play().catch(()=>{});
+  forceVideoPlay(remote, true);
   const fs=$('#fsRemote');
   if(fs && $('#streamFS').classList.contains('on')){
     fs.srcObject=null;
     fs.srcObject=stream;
-    fs.play().catch(()=>{});
+    forceVideoPlay(fs, true);
   }
 }
 function addRemoteTrack(track){
@@ -920,6 +956,80 @@ function forceRemoteAudioPlay(){
   }
   applyRemoteVolume();
 }
+
+/* جودة متكيّفة حسب النت — تقل الجودة بدل ما تفصل */
+function stopAdaptiveQuality(){
+  if(S._adaptTimer){ clearInterval(S._adaptTimer); S._adaptTimer=null; }
+}
+function startAdaptiveQuality(){
+  stopAdaptiveQuality();
+  S._adaptLevel=1; // 0=منخفض جدا 1=عادي 2=أعلى شوية
+  S._adaptTimer=setInterval(async()=>{
+    if(!S.pc || S.pc.connectionState==='closed') return;
+    try{
+      const stats=await S.pc.getStats();
+      let loss=0, rtt=0, packets=0, lost=0;
+      stats.forEach(r=>{
+        if(r.type==='inbound-rtp' && r.kind==='video'){
+          if(r.packetsLost!=null) lost+=r.packetsLost;
+          if(r.packetsReceived!=null) packets+=r.packetsReceived;
+        }
+        if(r.type==='candidate-pair' && r.state==='succeeded' && r.currentRoundTripTime!=null){
+          rtt=Math.max(rtt, r.currentRoundTripTime);
+        }
+        if(r.type==='remote-inbound-rtp' && r.kind==='video' && r.roundTripTime!=null){
+          rtt=Math.max(rtt, r.roundTripTime);
+        }
+      });
+      if(packets>0) loss=lost/Math.max(packets+lost,1);
+
+      // قرار الجودة
+      let target=S._adaptLevel;
+      if(loss>0.08 || rtt>0.45) target=0;          // نت وحش جدا
+      else if(loss>0.03 || rtt>0.25) target=0;     // ضعيف
+      else if(loss<0.01 && rtt<0.12) target=Math.min(2, (S._adaptLevel||1)+1); // نت كويس
+      else target=1;
+
+      if(target===S._adaptLevel) return;
+      S._adaptLevel=target;
+      await applyAdaptLevel(target);
+    }catch(e){}
+  },4000);
+}
+async function applyAdaptLevel(level){
+  if(!S.pc || S.sharing) return; // أثناء الشير سيب الاستريم بإعداداته
+  const vs=S.pc.getSenders().find(s=>s.track&&s.track.kind==='video');
+  if(!vs || !vs.track) return;
+  // level 0: 240p 10fps 120kbps | 1: 320p 15fps 250kbps | 2: 480p 20fps 450kbps
+  const presets=[
+    {w:240,h:180,fps:10,br:120000,scale:2,label:'موفر'},
+    {w:320,h:240,fps:15,br:250000,scale:1.5,label:'متوازن'},
+    {w:480,h:360,fps:20,br:450000,scale:1,label:'واضح'}
+  ];
+  const pr=presets[level]||presets[1];
+  try{
+    await vs.track.applyConstraints({
+      width:{ideal:pr.w,max:pr.w},
+      height:{ideal:pr.h,max:pr.h},
+      frameRate:{ideal:pr.fps,max:pr.fps}
+    });
+  }catch(e){}
+  try{
+    if(vs.getParameters&&vs.setParameters){
+      const p=vs.getParameters();
+      if(!p.encodings||!p.encodings.length) p.encodings=[{}];
+      p.encodings[0].maxBitrate=pr.br;
+      p.encodings[0].maxFramerate=pr.fps;
+      p.encodings[0].scaleResolutionDownBy=pr.scale;
+      await vs.setParameters(p);
+    }
+  }catch(e){}
+  if($('#vstatus') && S.pc.connectionState==='connected'){
+    // إشارة خفيفة من غير إزعاج
+    $('#vstatus').textContent='متصل ✓ · '+pr.label;
+  }
+}
+
 async function preparePeer(){
   if(S.pc && S.pc.connectionState!=='closed' && S.pc.connectionState!=='failed') return S.pc;
   if(S.pc){ try{S.pc.close()}catch(e){} S.pc=null; }
@@ -957,11 +1067,9 @@ async function preparePeer(){
       }
       remote.autoplay=true;
       remote.playsInline=true;
-      remote.muted=!!S.deaf;
-      remote.play().catch(()=>{});
-      // fullscreen mirror
+      forceVideoPlay(remote, true);
       const fs=$('#fsRemote');
-      if(fs){ fs.srcObject=remote.srcObject; fs.play().catch(()=>{}); }
+      if(fs){ fs.srcObject=remote.srcObject; forceVideoPlay(fs, true); }
       if(e.track && e.track.kind==='video'){
         e.track.enabled=true;
         e.track.onunmute=()=>{ remote.play().catch(()=>{}); };
@@ -995,9 +1103,9 @@ async function preparePeer(){
           });
           if(ms.getTracks().length){
             remote.srcObject=ms;
-            remote.play().catch(()=>{});
+            forceVideoPlay(remote, true);
             const fs=$('#fsRemote');
-            if(fs){ fs.srcObject=ms; fs.play().catch(()=>{}); }
+            if(fs){ fs.srcObject=ms; forceVideoPlay(fs, true); }
           }
         }
       }catch(e){}
@@ -1021,7 +1129,7 @@ async function preparePeer(){
   try{
     S.localStream=await navigator.mediaDevices.getUserMedia({
       audio:{echoCancellation:true,noiseSuppression:S.noiseOn!==false,autoGainControl:true},
-      video:{width:{ideal:640},height:{ideal:480},frameRate:{ideal:24,max:30},facingMode:S.facing||'user'}
+      video:{width:{ideal:320},height:{ideal:240},frameRate:{ideal:15,max:20},facingMode:S.facing||'user'}
     });
   }catch(e){
     try{
@@ -1043,6 +1151,19 @@ async function preparePeer(){
     t.enabled=true;
     S.pc.addTrack(t, S.localStream);
   });
+  // بتريت منخفض من الأول (نت ضعيف = سلاسة)
+  try{
+    const vs=S.pc.getSenders().find(s=>s.track&&s.track.kind==='video');
+    if(vs&&vs.getParameters&&vs.setParameters){
+      const p=vs.getParameters();
+      if(!p.encodings||!p.encodings.length) p.encodings=[{}];
+      p.encodings[0].maxBitrate=250000; // 250kbps
+      p.encodings[0].maxFramerate=15;
+      p.encodings[0].scaleResolutionDownBy=1;
+      vs.setParameters(p).catch(()=>{});
+    }
+  }catch(e){}
+  startAdaptiveQuality();
   // لو مفيش فيديو — transceiver يستقبل فيديو الطرف
   const hasVid=S.localStream.getVideoTracks().length>0;
   if(!hasVid){
@@ -1099,6 +1220,7 @@ async function handleOffer(x){
 }
 function cleanupCall(notify){
   stopRing();
+  stopAdaptiveQuality();
   if(notify&&S.callWith&&S.socket?.connected){ try{ S.socket.emit('call:hangup',{to:S.callWith}); }catch(e){} }
   if(S.screenStream){ S.screenStream.getTracks().forEach(t=>{try{t.stop()}catch(e){}}); S.screenStream=null; }
   if(S._screenAudioSender&&S.pc){ try{S.pc.removeTrack(S._screenAudioSender)}catch(e){} S._screenAudioSender=null; }
@@ -1361,6 +1483,7 @@ $('#cstream').onclick=toggleShare;
 $('#cnoise').onclick=toggleNoise;
 $('#cvol').onclick=openVolPanel;
 $('#cfixaudio').onclick=()=>{ forceRemoteAudioPlay(); toast('🔊','تم'); };
+$('#cplayvid').onclick=()=>{ const r=$('#remoteVideo'); if(r&&r.srcObject){ forceVideoPlay(r,true); toast('▶️','تشغيل الفيديو'); } else if(S.pc){ const ms=new MediaStream(); S.pc.getReceivers().forEach(x=>{ if(x.track&&x.track.readyState!=='ended') ms.addTrack(x.track); }); if(ms.getTracks().length&&r){ r.srcObject=ms; forceVideoPlay(r,true); toast('▶️','تم ربط الفيديو'); } else toast('⚠️','لسه مفيش فيديو من الطرف'); } };
 $('#cfs').onclick=enterFS;
 $('#cmin').onclick=toggleMini;
 $('#cleave').onclick=()=>cleanupCall(true);
@@ -1384,6 +1507,28 @@ $('#volClose').onclick=()=>$('#volPanel').classList.remove('on');
 $$('[data-c]').forEach(b=>b.onclick=()=>{ const id=b.dataset.c; if(id) $('#'+id).classList.add('h'); });
 $$('.mod').forEach(m=>m.onclick=e=>{ if(e.target===m) m.classList.add('h'); });
 document.addEventListener('keydown',e=>{ if(e.key==='Escape'){ exitFS(); $('#volPanel').classList.remove('on'); } });
+
+// لمسة على فيديو الطرف = تشغيل (مهم على كروم موبايل)
+(function(){
+  function unlock(){
+    const remote=$('#remoteVideo');
+    if(remote && remote.srcObject) forceVideoPlay(remote, true);
+    const fs=$('#fsRemote');
+    if(fs && fs.srcObject) forceVideoPlay(fs, true);
+    forceRemoteAudioPlay();
+  }
+  document.addEventListener('click', e=>{
+    if(e.target && (e.target.id==='remoteVideo' || e.target.id==='fsRemote' || e.target.closest && e.target.closest('#videofloat'))){
+      unlock();
+    }
+  }, true);
+  document.addEventListener('touchend', e=>{
+    if(e.target && (e.target.id==='remoteVideo' || e.target.id==='fsRemote' || e.target.closest && e.target.closest('#videofloat'))){
+      unlock();
+    }
+  }, {passive:true, capture:true});
+})();
+
 
 /* سحب وتحجيم صندوق الفيديو */
 (function setupVideoDrag(){
