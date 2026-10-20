@@ -1344,39 +1344,44 @@ async function flipCamera(){
   }
 }
 async function toggleShare(){
-  if(!S.pc || S.pc.connectionState==='closed'){
-    toast('⚠️','ابدأ مكالمة الأول');
-    return;
-  }
-  if(S.sharing && S.screenStream){ await stopShare(); return; }
+  if(!S.pc){ toast('⚠️','ابدأ المكالمة الأول'); return; }
+  if(S.sharing){ await stopShare(); return; }
+
+  let stream=null;
   try{
-    // جودة معقولة عشان متبوظش المكالمة
-    S.screenStream = await navigator.mediaDevices.getDisplayMedia({
-      video: {
-        cursor: 'always',
-        width: { ideal: 1280, max: 1280 },
-        height: { ideal: 720, max: 720 },
-        frameRate: { ideal: 15, max: 20 }
-      },
-      audio: true
-    });
-  }catch(e){
-    console.warn(e);
-    toast('⚠️','الشير اتلغى أو المتصفح مش داعم (الأفضل من الكمبيوتر Chrome)');
+    // أبسط طلب — كروم الكمبيوتر بيقبله
+    stream = await navigator.mediaDevices.getDisplayMedia({ video:true, audio:true });
+  }catch(e1){
+    try{
+      stream = await navigator.mediaDevices.getDisplayMedia({ video:true, audio:false });
+    }catch(e2){
+      console.warn(e2);
+      toast('⚠️','الشير اتلغى');
+      return;
+    }
+  }
+
+  const screenVideo = stream.getVideoTracks()[0];
+  if(!screenVideo){
+    stream.getTracks().forEach(t=>t.stop());
+    toast('⚠️','مفيش فيديو من الشاشة');
     return;
   }
 
-  try{
-    const screenVideo = S.screenStream.getVideoTracks()[0];
-    if(!screenVideo) throw new Error('no screen video');
-    try{ screenVideo.contentHint = 'detail'; }catch(e){}
+  S.screenStream = stream;
+  S._screenAudioSender = null;
+  S._prevMic = null;
 
-    // بدّل فيديو الكاميرا بفيديو الشاشة — منغير ما نبوظ الـ peer
-    const vs = S.pc.getSenders().find(s => s.track && s.track.kind === 'video');
-    if(vs){
-      await vs.replaceTrack(screenVideo);
+  try{
+    // 1) بدّل فيديو الكاميرا بفيديو الشاشة
+    let vSender = S.pc.getSenders().find(s => s.track && s.track.kind === 'video');
+    if(!vSender){
+      // لو مفيش sender فيديو — ضيف
+      vSender = S.pc.addTrack(screenVideo, stream);
+      await renegotiate();
     }else{
-      S.pc.addTrack(screenVideo, S.screenStream);
+      await vSender.replaceTrack(screenVideo);
+      // replaceTrack عادة كفاية — منغير renegotiate
     }
 
     // بتريت معتدل
@@ -1385,83 +1390,81 @@ async function toggleShare(){
         || S.pc.getSenders().find(s => s.track && s.track.kind === 'video');
       if(sender && sender.setParameters){
         const p = sender.getParameters();
-        if(!p.encodings || !p.encodings.length) p.encodings = [{}];
-        p.encodings[0].maxBitrate = 600000;
-        p.encodings[0].maxFramerate = 15;
+        if(!p.encodings || !p.encodings.length) p.encodings=[{}];
+        p.encodings[0].maxBitrate = 800000;
+        p.encodings[0].maxFramerate = 20;
         await sender.setParameters(p);
       }
     }catch(e){}
 
-    // صوت النظام (لو متاح)
-    S._screenAudioSender = null;
-    S._prevMic = null;
-    const systemAudio = S.screenStream.getAudioTracks()[0] || null;
-    if(systemAudio){
-      systemAudio.enabled = true;
+    // 2) صوت الشاشة (اختياري)
+    const sysAudio = stream.getAudioTracks()[0];
+    if(sysAudio){
+      sysAudio.enabled = true;
       try{
-        // حاول تضيف تراك صوت إضافي
-        S._screenAudioSender = S.pc.addTrack(systemAudio, S.screenStream);
-        // لازم renegotiate لما نضيف تراك جديد
-        await renegotiate();
+        const aSender = S.pc.getSenders().find(s => s.track && s.track.kind === 'audio');
+        if(aSender){
+          S._prevMic = aSender.track;
+          await aSender.replaceTrack(sysAudio);
+        }else{
+          S._screenAudioSender = S.pc.addTrack(sysAudio, stream);
+          await renegotiate();
+        }
         toast('🔊','صوت الشاشة شغال');
       }catch(e){
-        // بديل: استبدل صوت المايك مؤقتًا
-        try{
-          const as = S.pc.getSenders().find(s => s.track && s.track.kind === 'audio');
-          if(as){
-            S._prevMic = as.track;
-            await as.replaceTrack(systemAudio);
-            toast('🔊','صوت الشاشة (بدل المايك مؤقت)');
-          }
-        }catch(e2){}
+        console.warn('screen audio', e);
       }
     }
 
     S.sharing = true;
     try{ stopAdaptiveQuality(); }catch(e){}
-    $('#localVideo').srcObject = S.screenStream;
-    $('#localVideo').muted = true;
+    const local = $('#localVideo');
+    if(local){ local.srcObject = stream; local.muted = true; }
     updateBtns();
     try{ $('#videofloat').classList.add('expanded'); }catch(e){}
     showWatchBtn(true);
-
-    screenVideo.onended = () => { stopShare(); };
-
-    toast('🖥️','شير سكرين شغال');
+    screenVideo.onended = () => { stopShare().catch(()=>{}); };
+    toast('🖥️','الشير شغال');
   }catch(e){
     console.warn(e);
-    if(S.screenStream){
-      S.screenStream.getTracks().forEach(t => { try{ t.stop(); }catch(x){} });
-      S.screenStream = null;
-    }
+    stream.getTracks().forEach(t=>{ try{t.stop()}catch(x){} });
+    S.screenStream = null;
     S.sharing = false;
     updateBtns();
-    toast('⚠️','فشل الشير — جرب من Chrome على الكمبيوتر');
+    toast('⚠️','فشل تفعيل الشير');
   }
 }
 
 async function stopShare(){
-  if(!S.screenStream && !S.sharing) return;
+  const wasSharing = S.sharing;
+  S.sharing = false;
 
-  // شيل صوت الشاشة الإضافي
+  if(S.screenStream){
+    S.screenStream.getTracks().forEach(t=>{ try{t.stop()}catch(e){} });
+    S.screenStream = null;
+  }
+
+  // رجّع المايك
+  try{
+    if(S._prevMic && S.pc){
+      const aSender = S.pc.getSenders().find(s => s.track && s.track.kind === 'audio');
+      if(aSender) await aSender.replaceTrack(S._prevMic);
+    }
+  }catch(e){}
+  S._prevMic = null;
+
   if(S._screenAudioSender && S.pc){
     try{ S.pc.removeTrack(S._screenAudioSender); }catch(e){}
     S._screenAudioSender = null;
   }
-
-  if(S.screenStream){
-    S.screenStream.getTracks().forEach(t => { try{ t.stop(); }catch(e){} });
-    S.screenStream = null;
-  }
-  S.sharing = false;
 
   // رجّع الكاميرا
   try{
     let cam = S.localStream && S.localStream.getVideoTracks().find(t => t.readyState === 'live');
     if(!cam){
       const ns = await navigator.mediaDevices.getUserMedia({
-        audio: false,
-        video: { width:{ideal:320}, height:{ideal:240}, frameRate:{ideal:12}, facingMode: S.facing||'user' }
+        audio:false,
+        video:{ facingMode: S.facing||'user', width:{ideal:320}, height:{ideal:240} }
       });
       cam = ns.getVideoTracks()[0];
       if(cam){
@@ -1469,31 +1472,19 @@ async function stopShare(){
         S.localStream = new MediaStream([...aud, cam]);
       }
     }
-    if(S.pc && cam){
-      const vSender = S.pc.getSenders().find(s => s.track && s.track.kind === 'video')
-        || S.pc.getSenders().find(s => !s.track);
+    if(cam && S.pc){
+      let vSender = S.pc.getSenders().find(s => s.track && s.track.kind === 'video');
+      if(!vSender) vSender = S.pc.getSenders().find(s => !s.track);
       if(vSender) await vSender.replaceTrack(cam);
     }
   }catch(e){ console.warn(e); }
 
-  // رجّع المايك لو كان اتبدل
-  try{
-    const mic = S._prevMic || (S.localStream && S.localStream.getAudioTracks()[0]);
-    S._prevMic = null;
-    const as = S.pc && S.pc.getSenders().find(s => s.track && s.track.kind === 'audio');
-    if(as && mic) await as.replaceTrack(mic);
-  }catch(e){}
-
-  if(S.localStream){
-    $('#localVideo').srcObject = S.localStream;
-    $('#localVideo').muted = true;
-  }
+  const local = $('#localVideo');
+  if(local && S.localStream){ local.srcObject = S.localStream; local.muted = true; }
   try{ $('#videofloat').classList.remove('expanded'); }catch(e){}
   updateBtns();
   try{ startAdaptiveQuality(); }catch(e){}
-  // renegotiate فقط لو كنّا ضفنا تراك صوت
-  try{ await renegotiate(); }catch(e){}
-  toast('🛑','وقف الشير');
+  if(wasSharing) toast('🛑','وقف الشير');
 }
 
 function toggleMini(){
