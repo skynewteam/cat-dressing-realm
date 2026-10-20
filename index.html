@@ -502,11 +502,44 @@ async function requestPerms(){
 function connectRealtime(){
   if(S.socket){ try{ S.socket.removeAllListeners(); S.socket.disconnect(); }catch(e){} }
   S.socket=io(SERVER_URL,{
-    transports:['websocket','polling'], reconnection:true, reconnectionAttempts:Infinity,
-    reconnectionDelay:800, reconnectionDelayMax:5000, timeout:15000, forceNew:true
+    transports:['websocket','polling'],
+    reconnection:true,
+    reconnectionAttempts:Infinity,
+    reconnectionDelay:500,
+    reconnectionDelayMax:3000,
+    timeout:20000,
+    forceNew:true,
+    // إبقاء السوكت حي أطول
+    upgrade:true
   });
-  S.socket.on('connect',()=>{ S.socket.emit('user:join',{name:S.nick,av:S.av}); startHeartbeat(); if(S.joined){ softBeep('up'); toast('🔄','رجع الاتصال'); } });
-  S.socket.on('disconnect',()=>{ stopHeartbeat(); if(S.joined){ softBeep('down'); toast('⚠️','انقطع...'); } });
+  S.socket.on('connect',()=>{
+    S.socket.emit('user:join',{name:S.nick,av:S.av});
+    startHeartbeat();
+    if(S.joined){
+      softBeep('up');
+      toast('🔄','رجع الاتصال');
+      // لو في مكالمة — حاول ترجع الـ WebRTC
+      if(S.pc && S.callWith){
+        setTimeout(async()=>{
+          try{
+            if(!S.pc || S.pc.connectionState==='connected') return;
+            if(S.pc.restartIce) S.pc.restartIce();
+            const offer=await S.pc.createOffer({iceRestart:true});
+            await S.pc.setLocalDescription(offer);
+            S.socket.emit('call:offer',{to:S.callWith,sdp:S.pc.localDescription});
+          }catch(e){}
+        },800);
+      }
+    }
+  });
+  S.socket.on('disconnect',(reason)=>{
+    stopHeartbeat();
+    if(S.joined){
+      softBeep('down');
+      toast('⚠️','انقطع السيرفر... بيعيد');
+      // متقفلش المكالمة — السوكت هيرجع لوحده
+    }
+  });
   S.socket.on('user:error',m=>{ $('#nerr').textContent=m; $('#nerr').classList.add('on'); });
   S.socket.on('user:joined',()=>{
     S.joined=true; $('#mn').textContent=S.nick; $('#mav').textContent=S.av;
@@ -578,7 +611,16 @@ function connectRealtime(){
   S.socket.on('call:ice',async x=>{ if(S.pc&&x.candidate) try{ await S.pc.addIceCandidate(x.candidate); }catch(e){} });
   S.socket.on('call:hangup',x=>{ toast('📞',x.from+' قفل'); cleanupCall(false); });
 }
-function startHeartbeat(){ stopHeartbeat(); S.heartbeat=setInterval(()=>{ if(S.socket&&S.socket.connected) S.socket.emit('ping',{t:Date.now()}); },15000); }
+function startHeartbeat(){
+  stopHeartbeat();
+  S.heartbeat=setInterval(()=>{
+    if(S.socket&&S.socket.connected){
+      try{ S.socket.emit('ping',{t:Date.now()}); }catch(e){}
+      // keepalive إضافي
+      try{ S.socket.emit('user:ping',{t:Date.now()}); }catch(e){}
+    }
+  },8000);
+}
 function stopHeartbeat(){ if(S.heartbeat){ clearInterval(S.heartbeat); S.heartbeat=null; } }
 function addFriend(u){
   if(!u) return;
@@ -875,46 +917,60 @@ async function preparePeer(){
       $('#vstatus').textContent='متصل ✓';
       stopRing();
       if(S._iceRetry){ clearTimeout(S._iceRetry); S._iceRetry=null; }
-      toast('✅','المكالمة اتصلت');
+      if(S._failRetry){ clearTimeout(S._failRetry); S._failRetry=null; }
       forceRemoteAudioPlay();
       S.pc.getSenders().forEach(s=>{ if(s.track?.kind==='audio') s.track.enabled=!S.muted; });
     }
     if(st==='disconnected'){
+      // متقفلش الكول — جرّب ترجع بس
       $('#vstatus').textContent='يعيد الاتصال...';
-      // محاولة ice restart بدل قفل المكالمة فورًا
-      if(!S._iceRetry){
-        S._iceRetry=setTimeout(async()=>{
-          S._iceRetry=null;
-          if(!S.pc) return;
-          if(S.pc.connectionState==='connected') return;
-          try{
-            if(S.pc.restartIce) S.pc.restartIce();
-            const offer=await S.pc.createOffer({iceRestart:true});
-            await S.pc.setLocalDescription(offer);
-            if(S.socket&&S.callWith) S.socket.emit('call:offer',{to:S.callWith,sdp:S.pc.localDescription});
-            toast('🔄','إعادة ربط...');
-          }catch(e){}
-          S._iceRetry=setTimeout(()=>{
-            if(S.pc && S.pc.connectionState!=='connected' && S.pc.connectionState!=='connecting'){
-              toast('⚠️','انقطع الاتصال');
-              cleanupCall(true);
-            }
-          },12000);
-        },2500);
-      }
-    }
-    if(st==='failed'){
-      $('#vstatus').textContent='يعيد المحاولة...';
-      (async()=>{
+      if(S._iceRetry) return;
+      S._iceRetry=setTimeout(async()=>{
+        S._iceRetry=null;
+        if(!S.pc || !S.callWith) return;
+        if(S.pc.connectionState==='connected') return;
         try{
-          if(S.pc&&S.pc.restartIce) S.pc.restartIce();
+          if(S.pc.restartIce) S.pc.restartIce();
           const offer=await S.pc.createOffer({iceRestart:true});
           await S.pc.setLocalDescription(offer);
-          if(S.socket&&S.callWith) S.socket.emit('call:offer',{to:S.callWith,sdp:S.pc.localDescription});
-        }catch(e){ toast('⚠️','فشل الاتصال'); cleanupCall(true); }
-      })();
+          if(S.socket&&S.socket.connected) S.socket.emit('call:offer',{to:S.callWith,sdp:S.pc.localDescription});
+          toast('🔄','إعادة ربط المكالمة...');
+        }catch(e){}
+      },2000);
     }
-    if(st==='closed') cleanupCall(false);
+    if(st==='failed'){
+      $('#vstatus').textContent='يحاول يرجع...';
+      if(S._failRetry) return;
+      S._failRetry=setTimeout(async()=>{
+        S._failRetry=null;
+        if(!S.pc || !S.callWith) return;
+        if(S.pc.connectionState==='connected') return;
+        try{
+          if(S.pc.restartIce) S.pc.restartIce();
+          const offer=await S.pc.createOffer({iceRestart:true});
+          await S.pc.setLocalDescription(offer);
+          if(S.socket&&S.socket.connected) S.socket.emit('call:offer',{to:S.callWith,sdp:S.pc.localDescription});
+          toast('🔄','محاولة استرجاع...');
+        }catch(e){
+          // محاولة أخيرة بعد 8 ثواني — متقفلش غير لو المستخدم قفل
+          toast('⚠️','الاتصال ضعيف... بيحاول');
+        }
+      },1500);
+    }
+    // closed: متقفلش تلقائي لو لسه في مكالمة (ممكن من renegotiation)
+    if(st==='closed'){
+      if(S.callWith && S.socket && S.socket.connected){
+        // حاول تبني peer من جديد
+        setTimeout(async()=>{
+          if(!S.callWith) return;
+          try{
+            S.pc=null;
+            await preparePeer();
+            await makeOffer();
+          }catch(e){}
+        },1000);
+      }
+    }
   };
   try{
     S.localStream=await navigator.mediaDevices.getUserMedia({
@@ -1021,7 +1077,7 @@ function cleanupCall(notify){
   hideCallUI();
   S.callWith=null; S.incomingFrom=null;
   S.muted=false; S.deaf=false; S.camOn=true; S.sharing=false; S.makingOffer=false;
-  S.facing='user'; S.remoteVol=1; S._isGroup=false; S._groupQueue=null; if(S._iceRetry){clearTimeout(S._iceRetry);S._iceRetry=null;}
+  S.facing='user'; S.remoteVol=1; S._isGroup=false; S._groupQueue=null; if(S._iceRetry){clearTimeout(S._iceRetry);S._iceRetry=null;} if(S._failRetry){clearTimeout(S._failRetry);S._failRetry=null;}
   $('#incoming').classList.remove('on');
 }
 function updateBtns(){
@@ -1068,25 +1124,82 @@ async function flipCamera(){
   if(!S.pc||!S.localStream||S.sharing){ toast('⚠️','مش متاح دلوقتي'); return; }
   const next=S.facing==='user'?'environment':'user';
   try{
-    const ns=await navigator.mediaDevices.getUserMedia({
-      audio:false,
-      video:{facingMode:{ideal:next},width:{ideal:640},height:{ideal:480}}
-    });
-    const newVid=ns.getVideoTracks()[0];
+    // وقف الفيديو القديم الأول (مهم على الموبايل)
+    const oldVids=S.localStream.getVideoTracks();
+    oldVids.forEach(t=>{ try{t.stop()}catch(e){} });
+
+    let newVid=null;
+    // 1) جرّب facingMode exact
+    try{
+      const ns=await navigator.mediaDevices.getUserMedia({
+        audio:false,
+        video:{facingMode:{exact:next},width:{ideal:640},height:{ideal:480}}
+      });
+      newVid=ns.getVideoTracks()[0];
+    }catch(e1){
+      // 2) ideal
+      try{
+        const ns=await navigator.mediaDevices.getUserMedia({
+          audio:false,
+          video:{facingMode:{ideal:next},width:{ideal:640},height:{ideal:480}}
+        });
+        newVid=ns.getVideoTracks()[0];
+      }catch(e2){
+        // 3) اختيار بالـ deviceId من enumerateDevices
+        const devices=await navigator.mediaDevices.enumerateDevices();
+        const cams=devices.filter(d=>d.kind==='videoinput');
+        if(!cams.length) throw new Error('no cameras');
+        // اختار كاميرا مختلفة عن الحالية
+        let pick=null;
+        const curLabel=(oldVids[0]&&oldVids[0].label)||'';
+        for(const c of cams){
+          const lab=(c.label||'').toLowerCase();
+          if(next==='environment' && (lab.includes('back')||lab.includes('rear')||lab.includes('خلف')||lab.includes('environment'))){ pick=c; break; }
+          if(next==='user' && (lab.includes('front')||lab.includes('user')||lab.includes('أمام')||lab.includes('facetime'))){ pick=c; break; }
+        }
+        if(!pick){
+          // لف على كاميرا تانية غير الحالية
+          pick=cams.find(c=>c.label!==curLabel) || cams[cams.length>1?1:0];
+        }
+        const ns=await navigator.mediaDevices.getUserMedia({
+          audio:false,
+          video:{deviceId:{exact:pick.deviceId},width:{ideal:640},height:{ideal:480}}
+        });
+        newVid=ns.getVideoTracks()[0];
+      }
+    }
     if(!newVid) throw new Error('no video');
+
     const sender=S.pc.getSenders().find(s=>s.track?.kind==='video');
     if(sender) await sender.replaceTrack(newVid);
-    S.localStream.getVideoTracks().forEach(t=>{ try{t.stop()}catch(e){} });
+    else S.pc.addTrack(newVid, S.localStream);
+
     const audioTracks=S.localStream.getAudioTracks();
     S.localStream=new MediaStream([...audioTracks, newVid]);
     S.facing=next; S.camOn=true;
     $('#localVideo').srcObject=S.localStream;
     $('#localVideo').muted=true;
+    try{ await renegotiate(); }catch(e){}
     updateBtns();
     toast('🔄', next==='user'?'كاميرا أمامية':'كاميرا خلفية');
   }catch(e){
     console.warn(e);
-    toast('⚠️','مش قادر يقلب الكاميرا على الجهاز ده');
+    // حاول ترجع الكاميرا القديمة
+    try{
+      const ns=await navigator.mediaDevices.getUserMedia({
+        audio:false,
+        video:{facingMode:S.facing||'user',width:{ideal:640},height:{ideal:480}}
+      });
+      const v=ns.getVideoTracks()[0];
+      if(v){
+        const sender=S.pc.getSenders().find(s=>s.track?.kind==='video');
+        if(sender) await sender.replaceTrack(v);
+        const audioTracks=S.localStream?S.localStream.getAudioTracks():[];
+        S.localStream=new MediaStream([...audioTracks, v]);
+        $('#localVideo').srcObject=S.localStream;
+      }
+    }catch(e3){}
+    toast('⚠️','جرب تاني — اسمح بالكاميرا من إعدادات المتصفح');
   }
 }
 async function toggleShare(){
