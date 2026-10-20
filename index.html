@@ -892,34 +892,70 @@ function addRemoteTrack(track){
   }
 }
 function forceRemoteAudioPlay(){
-  try{ if(S.remoteAudioCtx && S.remoteAudioCtx.state==='suspended') S.remoteAudioCtx.resume(); }catch(e){}
-  if(S.remoteVol==null || S.remoteVol<=0) S.remoteVol=1;
-  const remote=$('#remoteVideo');
-  if(remote){
-    remote.muted=!!S.deaf;
-    remote.volume = S.deaf ? 0 : Math.min(1, S.remoteVol);
-    const p=remote.play(); if(p&&p.catch) p.catch(()=>{});
-  }
-  const fs=$('#fsRemote');
-  if(fs){
-    fs.muted=!!S.deaf;
-    fs.volume = S.deaf ? 0 : Math.min(1, S.remoteVol);
-    const p=fs.play(); if(p&&p.catch) p.catch(()=>{});
-  }
-  if(S.pc){
-    S.pc.getReceivers().forEach(r=>{
-      if(r.track && r.track.kind==='audio'){
-        r.track.enabled = !S.deaf;
+  try{
+    if(S.remoteVol==null || !(S.remoteVol>0)) S.remoteVol=1;
+    // فعّل AudioContext لو موجود
+    try{
+      if(!S._audioUnlock){
+        const AC=window.AudioContext||window.webkitAudioContext;
+        if(AC){ S._audioUnlock=new AC(); }
       }
-    });
-  }
-  if(S._remoteAudioNodes){
-    Object.values(S._remoteAudioNodes).forEach(n=>{
-      if(n.g) n.g.gain.value = S.deaf ? 0 : Math.min(1.2, S.remoteVol||1);
-    });
-  }
-  applyRemoteVolume();
+      if(S._audioUnlock && S._audioUnlock.state==='suspended') S._audioUnlock.resume();
+      if(S.remoteAudioCtx && S.remoteAudioCtx.state==='suspended') S.remoteAudioCtx.resume();
+    }catch(e){}
+
+    // اربط كل تراكات الاستقبال لو الفيديو فاضي
+    const remote=$('#remoteVideo');
+    if(remote && S.pc){
+      try{
+        const ms = remote.srcObject instanceof MediaStream ? remote.srcObject : new MediaStream();
+        S.pc.getReceivers().forEach(r=>{
+          if(!r.track || r.track.readyState==='ended') return;
+          r.track.enabled = true;
+          if(![...ms.getTracks()].some(x=>x.id===r.track.id)){
+            if(r.track.kind==='video'){
+              ms.getVideoTracks().forEach(v=>{ try{ms.removeTrack(v)}catch(e){} });
+            }
+            ms.addTrack(r.track);
+          }
+        });
+        if(ms.getTracks().length){
+          remote.srcObject = ms;
+        }
+      }catch(e){ console.warn(e); }
+    }
+
+    const playEl = (el)=>{
+      if(!el) return;
+      el.setAttribute('playsinline','');
+      el.playsInline = true;
+      el.autoplay = true;
+      el.muted = !!S.deaf;
+      el.volume = S.deaf ? 0 : Math.min(1, S.remoteVol||1);
+      const p = el.play();
+      if(p && p.catch) p.catch(()=>{
+        // محاولة أخيرة muted ثم unmute
+        el.muted = true;
+        el.play().then(()=>{
+          if(!S.deaf){ el.muted=false; el.volume=Math.min(1,S.remoteVol||1); }
+        }).catch(()=>{});
+      });
+    };
+    playEl(remote);
+    playEl($('#fsRemote'));
+
+    if(S.pc){
+      S.pc.getReceivers().forEach(r=>{
+        if(r.track && r.track.kind==='audio') r.track.enabled = !S.deaf;
+      });
+      S.pc.getSenders().forEach(s=>{
+        if(s.track && s.track.kind==='audio') s.track.enabled = !S.muted;
+      });
+    }
+    try{ applyRemoteVolume(); }catch(e){}
+  }catch(e){ console.warn('forceRemoteAudioPlay', e); }
 }
+
 async function preparePeer(){
   if(S.pc && S.pc.connectionState!=='closed' && S.pc.connectionState!=='failed') return S.pc;
   if(S.pc){ try{S.pc.close()}catch(e){} S.pc=null; }
@@ -943,46 +979,28 @@ async function preparePeer(){
     try{
       const remote=$('#remoteVideo');
       if(!remote) return;
-      // أبسط وأضمن طريقة: خد الستريم الجاهز من WebRTC
       if(e.streams && e.streams[0]){
-        remote.srcObject=e.streams[0];
-      }else if(e.track){
-        if(!remote.srcObject) remote.srcObject=new MediaStream();
-        if(![...remote.srcObject.getTracks()].find(t=>t.id===e.track.id)){
+        remote.srcObject = e.streams[0];
+      } else if(e.track){
+        if(!remote.srcObject) remote.srcObject = new MediaStream();
+        const stream = remote.srcObject;
+        if(![...stream.getTracks()].some(x=>x.id===e.track.id)){
           if(e.track.kind==='video'){
-            remote.srcObject.getVideoTracks().forEach(t=>{ try{remote.srcObject.removeTrack(t)}catch(x){} });
+            stream.getVideoTracks().forEach(v=>{ try{stream.removeTrack(v)}catch(err){} });
           }
-          remote.srcObject.addTrack(e.track);
+          stream.addTrack(e.track);
         }
       }
-      remote.autoplay=true;
-      remote.playsInline=true;
-      remote.setAttribute('playsinline','');
-      // على الموبايل: شغّل muted ثم فك الميوت
-      remote.muted=true;
-      const rp=remote.play();
-      if(rp&&rp.then) rp.then(()=>{
-        if(!S.deaf){ remote.muted=false; remote.volume=Math.min(1,S.remoteVol||1); }
-      }).catch(()=>{ remote.play().catch(()=>{}); });
-      else {
-        remote.muted=!!S.deaf;
-        remote.volume=S.deaf?0:Math.min(1,S.remoteVol||1);
-      }
-      const fs=$('#fsRemote');
-      if(fs){ fs.srcObject=remote.srcObject; fs.muted=true; fs.play().then(()=>{ if(!S.deaf) fs.muted=false; }).catch(()=>{}); }
-      if(S.sharing) try{ $('#videofloat').classList.add('expanded'); }catch(e){}
+      if(e.track) e.track.enabled = true;
+      forceRemoteAudioPlay();
       if(e.track && e.track.kind==='video'){
-        e.track.enabled=true;
-        e.track.onunmute=()=>{ remote.play().catch(()=>{}); };
-        showWatchBtn(true);
+        try{ showWatchBtn(true); }catch(err){}
+        if(S.sharing){ try{ $('#videofloat').classList.add('expanded'); }catch(err){} }
       }
-      if(e.track && e.track.kind==='audio'){
-        e.track.enabled=true;
-        applyRemoteVolume();
-      }
-      $('#vstatus').textContent='متصل ✓';
+      if($('#vstatus')) $('#vstatus').textContent='متصل ✓';
     }catch(err){ console.warn('ontrack', err); }
   };
+
   S.pc.onconnectionstatechange=()=>{
     if(!S.pc) return;
     const st=S.pc.connectionState;
@@ -1392,6 +1410,15 @@ $('#volClose').onclick=()=>$('#volPanel').classList.remove('on');
 })();
 $$('[data-c]').forEach(b=>b.onclick=()=>{ const id=b.dataset.c; if(id) $('#'+id).classList.add('h'); });
 $$('.mod').forEach(m=>m.onclick=e=>{ if(e.target===m) m.classList.add('h'); });
+
+// فتح الصوت بعد أي لمسة (مهم على الموبايل)
+document.addEventListener('click', function audioUnlockGlobal(){
+  try{
+    if(S._audioUnlock && S._audioUnlock.state==='suspended') S._audioUnlock.resume();
+    if(S.pc && S.callWith) forceRemoteAudioPlay();
+  }catch(e){}
+}, true);
+
 document.addEventListener('keydown',e=>{ if(e.key==='Escape'){ exitFS(); $('#volPanel').classList.remove('on'); } });
 
 /* سحب وتحجيم صندوق الفيديو */
