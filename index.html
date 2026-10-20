@@ -830,30 +830,53 @@ function rejectIncoming(){
   if(S.incomingFrom&&S.socket) S.socket.emit('call:reject',{to:S.incomingFrom});
   S.incomingFrom=null; $('#incoming').classList.remove('on');
 }
+function refreshRemoteVideo(){
+  const remote=$('#remoteVideo');
+  if(!remote || !remote.srcObject) return;
+  // إعادة ربط srcObject عشان المتصفح يرسم الفيديو (حل الشاشة السودة)
+  const stream=remote.srcObject;
+  remote.srcObject=null;
+  remote.srcObject=stream;
+  remote.play().catch(()=>{});
+  const fs=$('#fsRemote');
+  if(fs && $('#streamFS').classList.contains('on')){
+    fs.srcObject=null;
+    fs.srcObject=stream;
+    fs.play().catch(()=>{});
+  }
+}
 function addRemoteTrack(track){
+  if(!track) return;
   const remote=$('#remoteVideo');
   if(!remote.srcObject) remote.srcObject=new MediaStream();
   const stream=remote.srcObject;
-  if([...stream.getTracks()].find(t=>t.id===track.id)) return;
+  if([...stream.getTracks()].find(t=>t.id===track.id)) {
+    if(track.kind==='video') refreshRemoteVideo();
+    return;
+  }
   if(track.kind==='video'){
+    track.enabled=true;
+    // استبدل أي فيديو قديم (مهم لما الطرف يقلب الكاميرا)
+    stream.getVideoTracks().forEach(t=>{
+      try{ stream.removeTrack(t); }catch(e){}
+    });
     stream.addTrack(track);
-    if($('#fsRemote') && $('#streamFS').classList.contains('on'))
-      $('#fsRemote').srcObject=stream;
-    remote.play().catch(()=>{});
+    track.onunmute=()=>refreshRemoteVideo();
+    track.onmute=()=>{};
+    track.onended=()=>{ try{ stream.removeTrack(track); }catch(e){} };
+    refreshRemoteVideo();
     if(!S.sharing) showWatchBtn(true);
+    $('#vstatus').textContent='متصل ✓';
     return;
   }
   if(track.kind==='audio'){
     track.enabled=true;
-    if([...stream.getTracks()].find(t=>t.id===track.id)) return;
     const existingAudio = stream.getAudioTracks();
-    // أول تراك (مايك المكالمة) → الفيديو يشغّله لوحده (من غير تقطيع)
     if(existingAudio.length===0){
       stream.addTrack(track);
       applyRemoteVolume();
       remote.play().catch(()=>{});
     } else {
-      // تراك إضافي (صوت الاستريم) → AudioContext منفصل عشان الاتنين يشتغلوا
       try{
         if(!S.remoteAudioCtx) S.remoteAudioCtx=new (window.AudioContext||window.webkitAudioContext)();
         if(S.remoteAudioCtx.state==='suspended') S.remoteAudioCtx.resume();
@@ -906,9 +929,35 @@ async function preparePeer(){
   ]});
   S.pc.onicecandidate=e=>{ if(e.candidate&&S.socket&&S.callWith) S.socket.emit('call:ice',{to:S.callWith,candidate:e.candidate}); };
   S.pc.ontrack=e=>{
-    addRemoteTrack(e.track);
-    if(e.streams) e.streams.forEach(st=>st.getTracks().forEach(t=>addRemoteTrack(t)));
-    $('#vstatus').textContent='متصل ✓';
+    try{
+      if(e.streams && e.streams[0]){
+        // اربط الستريم كامل مرة واحدة أوضح للمتصفح
+        const remote=$('#remoteVideo');
+        if(remote){
+          const incoming=e.streams[0];
+          if(!remote.srcObject){
+            remote.srcObject=incoming;
+          }else{
+            // ادمج التراكات الناقصة
+            incoming.getTracks().forEach(t=>{
+              if(![...remote.srcObject.getTracks()].find(x=>x.id===t.id)){
+                // فيديو جديد يستبدل القديم
+                if(t.kind==='video'){
+                  remote.srcObject.getVideoTracks().forEach(ov=>{
+                    try{ remote.srcObject.removeTrack(ov); }catch(err){}
+                  });
+                }
+                remote.srcObject.addTrack(t);
+              }
+            });
+          }
+          refreshRemoteVideo();
+        }
+      }
+      addRemoteTrack(e.track);
+      if(e.streams) e.streams.forEach(st=>st.getTracks().forEach(t=>addRemoteTrack(t)));
+      $('#vstatus').textContent='متصل ✓';
+    }catch(err){ console.warn(err); }
   };
   S.pc.onconnectionstatechange=()=>{
     if(!S.pc) return;
@@ -922,7 +971,7 @@ async function preparePeer(){
       S.pc.getSenders().forEach(s=>{ if(s.track?.kind==='audio') s.track.enabled=!S.muted; });
     }
     if(st==='disconnected'){
-      // متقفلش الكول — جرّب ترجع بس
+      if(S._flipping) return; // قلب كاميرا — متبعتش استرجاع
       $('#vstatus').textContent='يعيد الاتصال...';
       if(S._iceRetry) return;
       S._iceRetry=setTimeout(async()=>{
@@ -939,6 +988,7 @@ async function preparePeer(){
       },2000);
     }
     if(st==='failed'){
+      if(S._flipping) return;
       $('#vstatus').textContent='يحاول يرجع...';
       if(S._failRetry) return;
       S._failRetry=setTimeout(async()=>{
@@ -959,17 +1009,9 @@ async function preparePeer(){
     }
     // closed: متقفلش تلقائي لو لسه في مكالمة (ممكن من renegotiation)
     if(st==='closed'){
-      if(S.callWith && S.socket && S.socket.connected){
-        // حاول تبني peer من جديد
-        setTimeout(async()=>{
-          if(!S.callWith) return;
-          try{
-            S.pc=null;
-            await preparePeer();
-            await makeOffer();
-          }catch(e){}
-        },1000);
-      }
+      // متعملش peer جديد تلقائي — ده كان بيسبب فصل
+      if(!S.callWith) return;
+      $('#vstatus').textContent='انقطع — اضغط إنهاء وأعد الاتصال';
     }
   };
   try{
@@ -1174,14 +1216,17 @@ async function flipCamera(){
     if(sender) await sender.replaceTrack(newVid);
     else S.pc.addTrack(newVid, S.localStream);
 
+    // وقف القديم بعد ما اتبدل بنجاح
+    oldVids.forEach(t=>{ try{t.stop()}catch(e){} });
     const audioTracks=S.localStream.getAudioTracks();
     S.localStream=new MediaStream([...audioTracks, newVid]);
     S.facing=next; S.camOn=true;
     $('#localVideo').srcObject=S.localStream;
     $('#localVideo').muted=true;
-    try{ await renegotiate(); }catch(e){}
+    // replaceTrack كفاية — منغير renegotiate عشان متقطعش المكالمة
     updateBtns();
     toast('🔄', next==='user'?'كاميرا أمامية':'كاميرا خلفية');
+    S._flipping=false;
   }catch(e){
     console.warn(e);
     // حاول ترجع الكاميرا القديمة
@@ -1200,6 +1245,7 @@ async function flipCamera(){
       }
     }catch(e3){}
     toast('⚠️','جرب تاني — اسمح بالكاميرا من إعدادات المتصفح');
+    S._flipping=false;
   }
 }
 async function toggleShare(){
