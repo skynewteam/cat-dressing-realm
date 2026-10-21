@@ -283,6 +283,7 @@ html,body{height:100%;overflow:hidden;font-family:var(--f);color:var(--text);use
     <button class="cb-btn on-state" id="cnoise">🧹 تصفية: On</button>
     <button class="cb-btn" id="cvol">🔉 صوت الطرف</button>
     <button class="cb-btn" id="cfixaudio">🔈 تشغيل الصوت</button>
+    <button class="cb-btn" id="cplayvid">▶️ تشغيل الفيديو</button>
     <button class="cb-btn" id="cfs">⛶ فل سكرين استريم</button>
     <button class="cb-btn" id="cmin">⬇️ تصغير</button>
     <button class="cb-btn dng" id="cleave">☎️ إنهاء</button>
@@ -705,6 +706,18 @@ function sendInvite(){
 }
 function showCallUI(){
   $('#callbar').classList.add('on');
+  // حاول تربط الفيديو عدة مرات في أول ثواني
+  try{
+    if(S._vidPoll) clearInterval(S._vidPoll);
+    let n=0;
+    S._vidPoll = setInterval(()=>{
+      n++;
+      attachAllMedia();
+      forceRemoteAudioPlay();
+      if(n>=8){ clearInterval(S._vidPoll); S._vidPoll=null; }
+    }, 1000);
+  }catch(e){}
+
   $('#cname').textContent='مع '+S.callWith;
   const vf=$('#videofloat');
   vf.classList.add('on');
@@ -732,6 +745,8 @@ function hideCallUI(){
 }
 function showWatchBtn(v){ if(v) $('#watchBtn').classList.add('on'); else $('#watchBtn').classList.remove('on'); }
 function enterFS(){
+  try{attachAllMedia();}catch(e){}
+
   const remote=$('#remoteVideo');
   const local=$('#localVideo');
   if(remote?.srcObject) $('#fsRemote').srcObject=remote.srcObject;
@@ -830,21 +845,83 @@ function rejectIncoming(){
   if(S.incomingFrom&&S.socket) S.socket.emit('call:reject',{to:S.incomingFrom});
   S.incomingFrom=null; $('#incoming').classList.remove('on');
 }
-function refreshRemoteVideo(){
-  const remote=$('#remoteVideo');
-  if(!remote || !remote.srcObject) return;
-  // إعادة ربط srcObject عشان المتصفح يرسم الفيديو (حل الشاشة السودة)
-  const stream=remote.srcObject;
-  remote.srcObject=null;
-  remote.srcObject=stream;
-  remote.play().catch(()=>{});
-  const fs=$('#fsRemote');
-  if(fs && $('#streamFS').classList.contains('on')){
-    fs.srcObject=null;
-    fs.srcObject=stream;
-    fs.play().catch(()=>{});
-  }
+function attachAllMedia(){
+  try{
+    // —— محلي ——
+    const local = $('#localVideo');
+    if(local){
+      if(S.sharing && S.screenStream){
+        local.srcObject = S.screenStream;
+      } else if(S.localStream){
+        local.srcObject = S.localStream;
+      }
+      local.muted = true;
+      local.setAttribute('playsinline','');
+      local.playsInline = true;
+      local.autoplay = true;
+      local.play().catch(()=>{});
+    }
+
+    // —— الطرف من receivers ——
+    const remote = $('#remoteVideo');
+    if(remote && S.pc){
+      const ms = new MediaStream();
+      S.pc.getReceivers().forEach(r=>{
+        if(!r.track || r.track.readyState==='ended') return;
+        r.track.enabled = true;
+        // فيديو: تراك واحد فقط
+        if(r.track.kind==='video'){
+          ms.getVideoTracks().forEach(v=>{ try{ms.removeTrack(v)}catch(e){} });
+        }
+        if(![...ms.getTracks()].some(x=>x.id===r.track.id)) ms.addTrack(r.track);
+      });
+      // لو عندنا srcObject قديم فيه تراكات مش في ms، ادمج
+      if(remote.srcObject instanceof MediaStream){
+        remote.srcObject.getTracks().forEach(tr=>{
+          if(tr.readyState!=='ended' && ![...ms.getTracks()].some(x=>x.id===tr.id)){
+            if(tr.kind==='video'){
+              ms.getVideoTracks().forEach(v=>{ try{ms.removeTrack(v)}catch(e){} });
+            }
+            ms.addTrack(tr);
+          }
+        });
+      }
+      if(ms.getTracks().length){
+        remote.srcObject = ms;
+        remote.setAttribute('playsinline','');
+        remote.playsInline = true;
+        remote.autoplay = true;
+        // الصوت من عنصر منفصل؛ الفيديو muted عشان autoplay يشتغل على الموبايل
+        const hasAudio = ms.getAudioTracks().length>0;
+        if(hasAudio && S._remoteAudioEl){
+          remote.muted = true;
+          S._remoteAudioEl.srcObject = new MediaStream(ms.getAudioTracks());
+          S._remoteAudioEl.muted = !!S.deaf;
+          S._remoteAudioEl.volume = S.deaf ? 0 : Math.min(1, S.remoteVol||1);
+          S._remoteAudioEl.play().catch(()=>{});
+        } else {
+          remote.muted = !!S.deaf;
+          remote.volume = S.deaf ? 0 : Math.min(1, S.remoteVol||1);
+        }
+        remote.play().catch(()=>{
+          remote.muted = true;
+          remote.play().catch(()=>{});
+        });
+        const fs = $('#fsRemote');
+        if(fs){
+          fs.srcObject = ms;
+          fs.muted = !!S.deaf;
+          fs.play().catch(()=>{});
+        }
+        if(ms.getVideoTracks().length){
+          try{ showWatchBtn(true); }catch(e){}
+        }
+      }
+    }
+  }catch(e){ console.warn('attachAllMedia', e); }
 }
+function refreshRemoteVideo(){ attachAllMedia(); }
+
 function addRemoteTrack(track){
   if(!track) return;
   const remote=$('#remoteVideo');
@@ -893,6 +970,7 @@ function addRemoteTrack(track){
 }
 function forceRemoteAudioPlay(){
   try{
+    attachAllMedia();
     if(S.remoteVol==null || !(S.remoteVol>0)) S.remoteVol=1;
     try{
       if(!S._audioUnlock){
@@ -1168,7 +1246,10 @@ async function preparePeer(){
 
   $('#localVideo').srcObject = S.localStream;
   $('#localVideo').muted = true;
+  $('#localVideo').setAttribute('playsinline','');
+  $('#localVideo').playsInline=true;
   $('#localVideo').play().catch(()=>{});
+  setTimeout(()=>{ try{attachAllMedia();}catch(e){} }, 500);
   $('#remoteVideo').srcObject = null;
   $('#remoteVideo').muted = false;
   $('#remoteVideo').volume = 1;
@@ -1501,6 +1582,7 @@ $('#cstream').onclick=toggleShare;
 $('#cnoise').onclick=toggleNoise;
 $('#cvol').onclick=openVolPanel;
 $('#cfixaudio').onclick=()=>{ forceRemoteAudioPlay(); toast('🔊','تم'); };
+$('#cplayvid').onclick=()=>{ try{attachAllMedia()}catch(e){}; try{forceRemoteAudioPlay()}catch(e){}; toast('▶️','فيديو'); };
 $('#cfs').onclick=enterFS;
 $('#cmin').onclick=toggleMini;
 $('#cleave').onclick=()=>cleanupCall(true);
