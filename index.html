@@ -335,8 +335,8 @@ html,body{height:100%;overflow:hidden;font-family:var(--f);color:var(--text);use
   </div>
   <div class="resize-handle" id="vResize" title="تحجيم">⌟</div>
   <div class="vwrap">
-    <video id="remoteVideo" autoplay playsinline></video>
-    <video id="localVideo" autoplay playsinline muted></video>
+    <video id="remoteVideo" autoplay playsinline webkit-playsinline x5-playsinline></video>
+    <video id="localVideo" autoplay playsinline webkit-playsinline x5-playsinline muted></video>
   </div>
   <div class="vstatus" id="vstatus">جاري الاتصال...</div>
 </div>
@@ -1059,12 +1059,18 @@ async function preparePeer(){
 
       if(e.track){
         e.track.enabled = true;
-        e.track.onunmute = ()=> forceRemoteAudioPlay();
+        e.track.onunmute = ()=>{ forceRemoteAudioPlay(); refreshRemoteVideo(); };
+        if(e.track.kind==='video'){
+          e.track.enabled = true;
+          try{ showWatchBtn(true); }catch(err){}
+          // أي فيديو واصل (كاميرا أو شير) — وسّع العرض وشغّل
+          try{ $('#videofloat').classList.add('on'); }catch(err){}
+          refreshRemoteVideo();
+        }
       }
       forceRemoteAudioPlay();
-      if(e.track && e.track.kind==='video'){
-        try{ showWatchBtn(true); }catch(err){}
-        if(S.sharing){ try{ $('#videofloat').classList.add('expanded'); }catch(err){} }
+      if(e.track && e.track.kind==='video' && S.sharing){
+        try{ $('#videofloat').classList.add('expanded'); }catch(err){}
       }
       if($('#vstatus')) $('#vstatus').textContent='متصل ✓';
     }catch(err){ console.warn('ontrack', err); }
@@ -1250,10 +1256,35 @@ function toggleMute(){
   updateBtns();
 }
 function toggleDeaf(){ S.deaf=!S.deaf; forceRemoteAudioPlay(); updateBtns(); }
-function toggleCam(){
-  if(!S.localStream||S.sharing) return;
-  const v=S.localStream.getVideoTracks(); if(!v.length) return;
-  S.camOn=!S.camOn; v.forEach(t=>t.enabled=S.camOn); updateBtns();
+async function toggleCam(){
+  if(!S.pc || S.sharing) return;
+  // لو مفيش تراك فيديو — افتح كاميرا
+  let v = S.localStream ? S.localStream.getVideoTracks() : [];
+  if(!v.length){
+    try{
+      const ns = await navigator.mediaDevices.getUserMedia({
+        audio:false,
+        video:{width:{ideal:640},height:{ideal:480},facingMode:S.facing||'user'}
+      });
+      const nt = ns.getVideoTracks()[0];
+      if(!nt) return;
+      nt.enabled = true;
+      if(S.localStream) S.localStream.addTrack(nt);
+      else S.localStream = ns;
+      const sender = S.pc.getSenders().find(s=>s.track && s.track.kind==='video');
+      if(sender) await sender.replaceTrack(nt);
+      else S.pc.addTrack(nt, S.localStream);
+      $('#localVideo').srcObject = S.localStream;
+      $('#localVideo').muted = true;
+      S.camOn = true;
+      updateBtns();
+      toast('📷','الكاميرا اشتغلت');
+      return;
+    }catch(e){ toast('⚠️','اسمح بالكاميرا'); return; }
+  }
+  S.camOn = !S.camOn;
+  v.forEach(t=>{ t.enabled = S.camOn; });
+  updateBtns();
 }
 async function toggleNoise(){
   S.noiseOn=!S.noiseOn;
@@ -1358,9 +1389,9 @@ async function toggleShare(){
     S.screenStream=await navigator.mediaDevices.getDisplayMedia({
       video:{
         cursor:'always',
-        width:{ideal:640,max:854},
-        height:{ideal:360,max:480},
-        frameRate:{ideal:8,max:10}
+        width:{ideal:854,max:854},
+        height:{ideal:480,max:480},
+        frameRate:{ideal:30,max:30}
       },
       audio:true
     });
@@ -1369,9 +1400,9 @@ async function toggleShare(){
     try{ screenVideo.contentHint='detail'; }catch(e){}
     try{
       await screenVideo.applyConstraints({
-        width:{ideal:640,max:854},
-        height:{ideal:360,max:480},
-        frameRate:{ideal:8,max:10}
+        width:{ideal:854,max:854},
+        height:{ideal:480,max:480},
+        frameRate:{ideal:30,max:30}
       });
     }catch(e){}
 
@@ -1386,10 +1417,9 @@ async function toggleShare(){
       if(sender && sender.getParameters && sender.setParameters){
         const p=sender.getParameters();
         if(!p.encodings || !p.encodings.length) p.encodings=[{}];
-        p.encodings[0].maxBitrate=200000; // 480p30 ثابت
-        p.encodings[0].maxFramerate=8;
+        p.encodings[0].maxBitrate=1000000; // 480p30 متوسط
+        p.encodings[0].maxFramerate=30;
         p.encodings[0].scaleResolutionDownBy=1;
-        if(p.encodings[0].scaleResolutionDownBy==null) p.encodings[0].scaleResolutionDownBy=1;
         await sender.setParameters(p);
       }
     }catch(e){ console.warn('screen bitrate', e); }
@@ -1414,7 +1444,7 @@ async function toggleShare(){
     // لو التراك اتعمل mute من النظام لأي سبب
     screenVideo.onmute=()=>{};
     screenVideo.onunmute=()=>{};
-    toast('🖥️','الشير شغال (خفيف)');
+    toast('🖥️','الشير 480p · 30fps');
   }catch(e){ toast('⚠️','الشير اتلغى'); S.sharing=false; updateBtns(); }
 }
 async function stopShare(){
